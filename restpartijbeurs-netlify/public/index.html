@@ -1,0 +1,997 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Restpartijbeurs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: sticky header with tabs, filter strip, grid of crate-label cards; dialogs for lot and bid entry */
+:root {
+  --bg: #F3F6F1;
+  --surface: #FFFFFF;
+  --ink: #16241D;
+  --muted: #5B6A61;
+  --line: #D9E1D6;
+  --accent: #A3214F;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #F6E4EB;
+  --groente: #2F7D4A;
+  --fruit: #D25A2A;
+  --aardappel: #9C7426;
+  --ok: #2F7D4A;
+  --ok-soft: #E2F0E6;
+  --warn: #9A5B00;
+  --warn-soft: #FBEFD9;
+  --off: #6E7A73;
+  --off-soft: #ECEFEC;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101814; --surface: #18221D; --ink: #E5ECE7; --muted: #94A49A; --line: #2A3832;
+    --accent: #E5719A; --accent-ink: #1A0B11; --accent-soft: #3A1C28;
+    --groente: #62B57E; --fruit: #EE875C; --aardappel: #D3A752;
+    --ok: #6CC08A; --ok-soft: #1D3326; --warn: #F0B65A; --warn-soft: #3A2D16; --off: #9AA59F; --off-soft: #232D28;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101814; --surface: #18221D; --ink: #E5ECE7; --muted: #94A49A; --line: #2A3832;
+  --accent: #E5719A; --accent-ink: #1A0B11; --accent-soft: #3A1C28;
+  --groente: #62B57E; --fruit: #EE875C; --aardappel: #D3A752;
+  --ok: #6CC08A; --ok-soft: #1D3326; --warn: #F0B65A; --warn-soft: #3A2D16; --off: #9AA59F; --off-soft: #232D28;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; }
+.top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-block: 12px 4px; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { font-family: var(--font-display); font-weight: 700; font-size: 28px; letter-spacing: .01em; margin: 0; text-transform: uppercase; line-height: 1; }
+.brand span { color: var(--muted); font-size: 13px; }
+@media (max-width: 480px) { .brand span { display: none; } .brand h1 { font-size: 24px; } }
+.tabs { display: flex; gap: 4px; overflow-x: auto; }
+.tab {
+  background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 12px 9px; cursor: pointer;
+  font-family: var(--font-display); font-weight: 600; font-size: 18px; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); white-space: nowrap;
+}
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tab .n { font-family: var(--font-body); font-size: 12px; font-weight: 600; background: var(--off-soft); color: var(--muted); border-radius: 99px; padding: 1px 7px; margin-left: 4px; vertical-align: 2px; font-variant-numeric: tabular-nums; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; font-weight: 600; cursor: pointer; font-size: 14px; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+main { padding-block: 20px 48px; }
+.notice { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 12px 14px; margin-bottom: 16px; color: var(--muted); }
+.notice strong { color: var(--ink); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 5px 12px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.sw.Groente { background: var(--groente); } .sw.Fruit { background: var(--fruit); } .sw.Aardappelen { background: var(--aardappel); }
+.search { flex: 1 1 220px; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 7px 12px; }
+select.sel { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 7px 10px; }
+label.check { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+.lot { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; min-width: 0; }
+.lot.closed { opacity: .72; }
+.label-strip { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px dashed var(--line);
+  font-family: var(--font-display); font-weight: 600; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.label-strip .cat { display: inline-flex; align-items: center; gap: 7px; }
+.lot-body { padding: 12px 14px 4px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.prod { font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.05; margin: 0; text-wrap: balance; overflow-wrap: anywhere; }
+.ras { color: var(--muted); font-size: 14px; margin-top: 2px; }
+dl.specs { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 14px; }
+dl.specs dt { color: var(--muted); }
+dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.note { font-size: 13.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; overflow-wrap: anywhere; }
+.lot-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 10px 14px 14px; flex-wrap: wrap; }
+.price { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.price small { font-family: var(--font-body); font-weight: 500; font-size: 13px; color: var(--muted); }
+.bidinfo { font-size: 13px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.bidinfo b { color: var(--ink); font-weight: 600; }
+
+.pill { display: inline-block; font-family: var(--font-body); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.off { background: var(--off-soft); color: var(--off); }
+.pill.acc { background: var(--accent-soft); color: var(--accent); }
+
+.empty { border: 1px dashed var(--line); border-radius: var(--r); padding: 28px 20px; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); align-items: center; }
+.empty h2 { font-family: var(--font-display); font-size: 26px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .02em; }
+.empty p { margin: 0 0 14px; color: var(--muted); max-width: 52ch; }
+.example { position: relative; pointer-events: none; }
+.example::before { content: "Voorbeeld"; position: absolute; top: -10px; right: 12px; z-index: 1; background: var(--ink); color: var(--bg); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; }
+@media (max-width: 720px) { .empty { grid-template-columns: 1fr; } }
+
+/* seller + buyer lists */
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.panel-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.panel-head h3 { font-family: var(--font-display); font-size: 22px; margin: 0; line-height: 1.1; overflow-wrap: anywhere; }
+.panel-head .meta { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.bids { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; }
+.bids th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding: 8px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.bids td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.bids tr:last-child td { border-bottom: 0; }
+.bids td.num, .bids th.num { text-align: right; white-space: nowrap; }
+.bids .sub { color: var(--muted); font-size: 13px; }
+.nobids { padding: 12px 14px; color: var(--muted); font-size: 14px; }
+.section-title { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .04em; font-size: 20px; margin: 0 0 10px; }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.row-between p { margin: 0; color: var(--muted); }
+
+/* dialogs */
+dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--surface); color: var(--ink); }
+dialog::backdrop { background: rgba(10, 20, 15, .45); }
+.dlg-head { padding: 16px 18px 6px; }
+.dlg-head h2 { font-family: var(--font-display); font-size: 26px; margin: 0; text-transform: uppercase; letter-spacing: .02em; }
+.dlg-head p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; padding: 12px 18px; }
+.form .full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 13px; font-weight: 600; }
+.field .hint { font-size: 12px; color: var(--muted); }
+.field input, .field select, .field textarea { border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 8px 10px; width: 100%; }
+.field textarea { min-height: 68px; resize: vertical; }
+.inline { display: flex; gap: 8px; }
+.inline > * { min-width: 0; }
+.fieldset-title { grid-column: 1 / -1; font-family: var(--font-display); font-size: 16px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 2px; }
+.dlg-foot { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 12px 18px 16px; flex-wrap: wrap; }
+.err { color: var(--fruit); font-size: 13.5px; }
+.sumline { grid-column: 1 / -1; background: var(--bg); border-radius: var(--r); padding: 8px 12px; font-variant-numeric: tabular-nums; font-size: 14px; }
+@media (max-width: 480px) { .form { grid-template-columns: 1fr; } }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: var(--r); font-size: 14px; z-index: 50; max-width: calc(100vw - 32px); }
+@media (prefers-reduced-motion: no-preference) { .toast { animation: up .2s ease-out; } @keyframes up { from { transform: translate(-50%, 8px); opacity: .4; } } }
+
+/* login + account */
+body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new { display: none !important; }
+.login { max-width: 420px; margin: 8vh auto 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.login .form { grid-template-columns: 1fr; }
+.login .dlg-foot { justify-content: flex-end; }
+.right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.user { display: flex; align-items: center; gap: 4px; font-size: 14px; }
+.user button.who { background: none; border: 0; cursor: pointer; padding: 6px 8px; border-radius: var(--r); font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user button.who:hover { background: var(--bg); }
+.user .role { font-size: 12px; color: var(--muted); }
+
+/* beheer */
+.admin-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .admin-grid { grid-template-columns: 1fr; } }
+.panel .form { padding: 14px; }
+</style>
+</head>
+<body class="locked">
+
+<header class="top">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand"><h1>Restpartijbeurs</h1><span>Aardappelen · groente · fruit</span></div>
+      <div class="right">
+        <div class="user" id="user-box" hidden>
+          <button class="who" id="btn-account" type="button" title="Mijn account"></button>
+          <button class="btn small ghost" id="btn-logout" type="button">Uitloggen</button>
+        </div>
+        <button class="btn primary" id="btn-new" type="button">+ Partij aanbieden</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-market" data-view="market" aria-selected="true">Aanbod <span class="n" id="n-market">0</span></button>
+      <button class="tab" role="tab" id="tab-mine" data-view="mine" aria-selected="false">Mijn partijen <span class="n" id="n-mine">0</span></button>
+      <button class="tab" role="tab" id="tab-bids" data-view="bids" aria-selected="false">Mijn biedingen <span class="n" id="n-bids">0</span></button>
+      <button class="tab" role="tab" id="tab-admin" data-view="admin" aria-selected="false" hidden>Beheer</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="status" class="notice" hidden></div>
+
+  <section id="view-login" hidden>
+    <form class="login" id="form-login" novalidate>
+      <div class="dlg-head"><h2>Inloggen</h2><p>Log in met je naam en code. Geen account? Vraag de beheerder.</p></div>
+      <div class="form">
+        <div class="field"><label for="l-name">Naam</label><input id="l-name" autocomplete="username" required></div>
+        <div class="field"><label for="l-code">Code</label><input id="l-code" type="password" autocomplete="current-password" required></div>
+      </div>
+      <div class="dlg-foot"><span class="err" id="login-err"></span><button class="btn primary" type="submit">Inloggen</button></div>
+    </form>
+    <form class="login" id="form-setup" novalidate hidden>
+      <div class="dlg-head"><h2>Eerste beheerder</h2><p>Er zijn nog geen gebruikers. Maak het beheerdersaccount aan met de installatiecode uit Netlify (<code>RPB_SETUP_CODE</code>).</p></div>
+      <div class="form">
+        <div class="field"><label for="s-setup">Installatiecode</label><input id="s-setup" type="password" autocomplete="off" required></div>
+        <div class="field"><label for="s-name">Jouw naam</label><input id="s-name" autocomplete="username" required></div>
+        <div class="field"><label for="s-company">Bedrijfsnaam</label><input id="s-company"></div>
+        <div class="field"><label for="s-contact">Telefoon of e-mail</label><input id="s-contact"></div>
+        <div class="field"><label for="s-code">Kies een code (minstens 4 tekens)</label><input id="s-code" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="s-code2">Herhaal de code</label><input id="s-code2" type="password" autocomplete="new-password" required></div>
+      </div>
+      <div class="dlg-foot"><span class="err" id="setup-err"></span><button class="btn primary" type="submit">Account aanmaken</button></div>
+    </form>
+  </section>
+
+  <section id="view-market" hidden>
+    <div class="filters">
+      <div class="chips" id="cat-chips">
+        <button class="chip" type="button" data-cat="" aria-pressed="true">Alles</button>
+        <button class="chip" type="button" data-cat="Groente" aria-pressed="false"><span class="sw Groente"></span>Groente</button>
+        <button class="chip" type="button" data-cat="Fruit" aria-pressed="false"><span class="sw Fruit"></span>Fruit</button>
+        <button class="chip" type="button" data-cat="Aardappelen" aria-pressed="false"><span class="sw Aardappelen"></span>Aardappelen</button>
+      </div>
+      <input class="search" id="q" type="search" placeholder="Zoek op product, ras, herkomst of plaats">
+      <select class="sel" id="sort" aria-label="Sorteren">
+        <option value="new">Nieuwste eerst</option>
+        <option value="until">Kortst houdbaar eerst</option>
+        <option value="price">Laagste prijs eerst</option>
+        <option value="value">Grootste partij eerst</option>
+      </select>
+      <label class="check"><input type="checkbox" id="show-closed"> Ook afgesloten partijen</label>
+    </div>
+    <div id="market"></div>
+  </section>
+
+  <section id="view-mine" hidden>
+    <div class="row-between">
+      <p>Hier zie je de biedingen op jouw partijen. Accepteer een bod om (een deel van) de partij te gunnen.</p>
+    </div>
+    <div id="mine" class="stack"></div>
+  </section>
+
+  <section id="view-bids" hidden>
+    <div id="mybids" class="stack"></div>
+  </section>
+
+  <section id="view-admin" hidden>
+    <div class="admin-grid">
+      <div class="panel">
+        <div class="panel-head"><div><h3>Gebruikers</h3><div class="meta">Handelaren kunnen aanbieden, bieden en gunnen. Beheerders beheren ook de gebruikers.</div></div></div>
+        <div class="tablewrap"><table class="bids" id="users-table"><thead><tr><th>Naam</th><th>Bedrijf</th><th>Rol</th><th>Status</th><th></th></tr></thead><tbody id="users-body"></tbody></table></div>
+      </div>
+      <form class="panel" id="form-user" novalidate>
+        <div class="panel-head"><h3>Nieuwe gebruiker</h3></div>
+        <div class="form" style="grid-template-columns:1fr">
+          <div class="field"><label for="u-name">Naam (om mee in te loggen)</label><input id="u-name" required></div>
+          <div class="field"><label for="u-company">Bedrijfsnaam</label><input id="u-company"></div>
+          <div class="field"><label for="u-contact">Telefoon of e-mail</label><input id="u-contact"></div>
+          <div class="field"><label for="u-code">Code (minstens 4 tekens)</label><input id="u-code" type="text" autocomplete="off" required><span class="hint">Geef de code persoonlijk door. De gebruiker kan hem zelf wijzigen.</span></div>
+          <div class="field"><label for="u-role">Rol</label><select id="u-role"><option value="handelaar">Handelaar</option><option value="beheerder">Beheerder</option></select></div>
+        </div>
+        <div class="dlg-foot"><span class="err" id="user-err"></span><button class="btn primary" type="submit">Gebruiker aanmaken</button></div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg-lot">
+  <form id="form-lot" novalidate>
+    <div class="dlg-head"><h2 id="lot-title">Partij aanbieden</h2><p>Vul de gegevens van de restpartij in. Alle velden zijn zichtbaar voor kopers.</p></div>
+    <div class="form">
+      <div class="field"><label for="f-product">Product</label><input id="f-product" required placeholder="bijv. Trostomaten" list="dl-products"></div>
+      <div class="field"><label for="f-ras">Ras / soort</label><input id="f-ras" placeholder="bijv. Elstar, Agria"></div>
+      <div class="field"><label for="f-cat">Categorie</label>
+        <select id="f-cat"><option>Groente</option><option>Fruit</option><option>Aardappelen</option></select></div>
+      <div class="field"><label for="f-klasse">Klasse</label>
+        <select id="f-klasse"><option>Klasse I</option><option>Klasse II</option><option>Industrie / verwerking</option><option>Biologisch Klasse I</option><option>Biologisch Klasse II</option></select></div>
+      <div class="field"><label for="f-herkomst">Herkomst</label><input id="f-herkomst" placeholder="NL" list="dl-landen"></div>
+      <div class="field"><label for="f-loc">Afhaallocatie</label><input id="f-loc" placeholder="bijv. Barendrecht"></div>
+      <div class="field"><label for="f-qty">Hoeveelheid</label>
+        <div class="inline"><input id="f-qty" type="number" min="1" step="1" inputmode="numeric" required placeholder="240">
+        <select id="f-unit" aria-label="Eenheid"><option>colli</option><option>kg</option><option>pallets</option><option>kisten</option><option>zakken</option></select></div></div>
+      <div class="field"><label for="f-minqty">Minimale afname</label><input id="f-minqty" type="number" min="1" step="1" inputmode="numeric" placeholder="1"></div>
+      <div class="field"><label for="f-price">Vraagprijs per eenheid (€)</label><input id="f-price" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="6,50"></div>
+      <div class="field"><label for="f-until">Houdbaar / beschikbaar tot</label><input id="f-until" type="date" required></div>
+      <div class="field full"><label for="f-pack">Verpakking</label><input id="f-pack" placeholder="bijv. 6 kg doos, 80 per pallet"></div>
+      <div class="field full"><label for="f-note">Toelichting</label><textarea id="f-note" placeholder="Waarom restpartij, kwaliteit, maatsortering, afleveringsvoorwaarden"></textarea></div>
+      <div class="fieldset-title">Jouw bedrijf</div>
+      <div class="field"><label for="f-company">Bedrijfsnaam</label><input id="f-company" required></div>
+      <div class="field"><label for="f-phone">Telefoon of e-mail</label><input id="f-phone" placeholder="Zichtbaar voor iedereen"></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="lot-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit" id="lot-submit">Publiceren</button></div></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-bid">
+  <form id="form-bid" novalidate>
+    <div class="dlg-head"><h2>Bod uitbrengen</h2><p id="bid-sub"></p></div>
+    <div class="form">
+      <div class="field"><label for="b-price">Jouw prijs per eenheid (€)</label><input id="b-price" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+      <div class="field"><label for="b-qty">Hoeveelheid</label><input id="b-qty" type="number" min="1" step="1" inputmode="numeric" required><span class="hint" id="b-qty-hint"></span></div>
+      <div class="sumline" id="b-sum"></div>
+      <div class="field full"><label for="b-note">Opmerking voor verkoper</label><textarea id="b-note" placeholder="bijv. ophalen morgen voor 10:00"></textarea></div>
+      <div class="fieldset-title">Jouw bedrijf</div>
+      <div class="field"><label for="b-company">Bedrijfsnaam</label><input id="b-company" required></div>
+      <div class="field"><label for="b-phone">Telefoon of e-mail</label><input id="b-phone"></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="bid-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Bod plaatsen</button></div></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-account">
+  <form id="form-account" novalidate>
+    <div class="dlg-head"><h2>Mijn account</h2><p id="acc-sub"></p></div>
+    <div class="form">
+      <div class="field"><label for="a-company">Bedrijfsnaam</label><input id="a-company"></div>
+      <div class="field"><label for="a-contact">Telefoon of e-mail</label><input id="a-contact"></div>
+      <div class="fieldset-title">Code wijzigen (optioneel)</div>
+      <div class="field"><label for="a-cur">Huidige code</label><input id="a-cur" type="password" autocomplete="current-password"></div>
+      <div class="field"><label for="a-new">Nieuwe code</label><input id="a-new" type="password" autocomplete="new-password"></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="acc-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-code">
+  <form id="form-code" novalidate>
+    <div class="dlg-head"><h2>Nieuwe code</h2><p id="code-sub"></p></div>
+    <div class="form" style="grid-template-columns:1fr">
+      <div class="field"><label for="c-code">Nieuwe code (minstens 4 tekens)</label><input id="c-code" type="text" autocomplete="off" required></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="code-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Code instellen</button></div></div>
+  </form>
+</dialog>
+
+<datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
+<datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const euro = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
+  const num = new Intl.NumberFormat("nl-NL");
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  const S = {
+    token: "", user: null, me: null, canWrite: null, ready: false, offline: false, lastNow: "",
+    lotsDocs: new Map(), bidsDocs: new Map(),
+    view: "market", cat: "", q: "", sort: "new", showClosed: false,
+    editing: null, bidLot: null,
+  };
+
+  // ---------- local prefs ----------
+  const pref = {
+    get(k) { try { return localStorage.getItem("rpb." + k) || ""; } catch { return ""; } },
+    set(k, v) { try { localStorage.setItem("rpb." + k, v); } catch {} },
+  };
+
+  // ---------- derived data ----------
+  function daysLeft(until) {
+    if (!until) return null;
+    const end = new Date(until + "T23:59:59");
+    const ms = end - new Date();
+    return Math.floor(ms / 86400000);
+  }
+  function allLots() {
+    const out = [];
+    for (const [sellerId, d] of S.lotsDocs) {
+      const items = (d && d.items) || {};
+      for (const [id, it] of Object.entries(items)) {
+        out.push({ ...it, id, sellerId, company: it.company || d.company || "", contact: it.contact || d.contact || "" });
+      }
+    }
+    return out;
+  }
+  function lotState(l) {
+    const dl = daysLeft(l.until);
+    if (l.status === "ingetrokken") return { key: "withdrawn", label: "Ingetrokken", cls: "off", closed: true };
+    if (l.status === "verkocht" || (l.remaining ?? l.qty) <= 0) return { key: "sold", label: "Verkocht", cls: "off", closed: true };
+    if (dl !== null && dl < 0) return { key: "expired", label: "Verlopen", cls: "off", closed: true };
+    if (dl !== null && dl <= 2) return { key: "urgent", label: dl === 0 ? "Vandaag weg" : dl === 1 ? "Nog 1 dag" : "Nog 2 dagen", cls: "warn", closed: false };
+    return { key: "open", label: dl === null ? "Open" : `Nog ${dl} dagen`, cls: "ok", closed: false };
+  }
+  function bidsFor(lotId) {
+    const out = [];
+    for (const [bidderId, d] of S.bidsDocs) {
+      const o = d && d.offers && d.offers[lotId];
+      if (o) out.push({ ...o, bidderId, company: d.company || "", contact: d.contact || "" });
+    }
+    return out.sort((a, b) => b.price - a.price);
+  }
+  function myBidDoc() { return S.bidsDocs.get(S.me) || null; }
+  function myLotsDoc() { return S.lotsDocs.get(S.me) || null; }
+
+  // ---------- writes ----------
+  let chain = Promise.resolve();
+  function queue(fn) { const p = chain.then(fn); chain = p.catch(() => {}); return p; }
+  async function writeDoc(path, body) {
+    const collection = path.split("/")[0];
+    try {
+      await api("doc/" + collection, { method: "PUT", body: { data: body } });
+      (collection === "lots" ? S.lotsDocs : S.bidsDocs).set(S.me, body);
+      render();
+      return true;
+    } catch (e) {
+      if (e.status !== 401) toast(e.status ? e.message : "Opslaan lukte niet. Controleer je verbinding en probeer het opnieuw.");
+      return false;
+    }
+  }
+
+  // ---------- server ----------
+  async function api(path, { method = "GET", body } = {}) {
+    const headers = { "content-type": "application/json" };
+    if (S.token) headers.authorization = "Bearer " + S.token;
+    let res;
+    try {
+      res = await fetch("/api/" + path, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+    } catch {
+      throw Object.assign(new Error("Geen verbinding met de server."), { status: 0 });
+    }
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (res.status === 401 && S.token && !/^(login|setup)$/.test(path)) {
+      signOutLocal();
+      showLogin("Je sessie is verlopen. Log opnieuw in.");
+    }
+    if (!res.ok) throw Object.assign(new Error(data.error || "Er ging iets mis (" + res.status + ")."), { status: res.status });
+    return data;
+  }
+
+  let pollTimer = null;
+  async function pull() {
+    if (!S.token) return;
+    try {
+      const since = S.lastNow ? new Date(Date.parse(S.lastNow) - 5000).toISOString() : "";
+      const d = await api("data" + (since ? "?since=" + encodeURIComponent(since) : ""));
+      if (d.full) { S.lotsDocs = new Map(); S.bidsDocs = new Map(); }
+      for (const doc of d.docs || []) {
+        const map = doc.collection === "lots" ? S.lotsDocs : doc.collection === "bids" ? S.bidsDocs : null;
+        if (!map) continue;
+        if (doc.data === null) map.delete(doc.id); else map.set(doc.id, doc.data);
+      }
+      S.lastNow = d.now; S.ready = true;
+      if (S.offline) { S.offline = false; }
+      render();
+    } catch (e) {
+      if (e.status === 401) return;
+      if (!S.offline) { S.offline = true; renderStatus(); }
+    }
+  }
+  function startPolling() {
+    stopPolling();
+    pull();
+    pollTimer = setInterval(() => { if (document.visibilityState === "visible") pull(); }, 8000);
+  }
+  function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.token) pull(); });
+  function saveMyLots(mutate) {
+    return queue(async () => {
+      const doc = clone(myLotsDoc() || { items: {} });
+      doc.items = doc.items || {};
+      mutate(doc);
+      return writeDoc("lots/" + S.me, doc);
+    });
+  }
+  function saveMyBids(mutate) {
+    return queue(async () => {
+      const doc = clone(myBidDoc() || { offers: {} });
+      doc.offers = doc.offers || {};
+      mutate(doc);
+      return writeDoc("bids/" + S.me, doc);
+    });
+  }
+
+  // ---------- toast ----------
+  let toastT;
+  function toast(msg) {
+    let el = $(".toast");
+    if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.appendChild(el); }
+    el.textContent = msg;
+    clearTimeout(toastT);
+    toastT = setTimeout(() => el.remove(), 3600);
+  }
+
+  // ---------- rendering ----------
+  function specRows(l) {
+    const rows = [
+      ["Partij", `${num.format(l.remaining ?? l.qty)} ${esc(l.unit)}${(l.remaining ?? l.qty) !== l.qty ? ` <span class="sub" style="color:var(--muted)">van ${num.format(l.qty)}</span>` : ""}`],
+      l.pack ? ["Verpakking", esc(l.pack)] : null,
+      l.minQty > 1 ? ["Min. afname", `${num.format(l.minQty)} ${esc(l.unit)}`] : null,
+      ["Houdbaar tot", l.until ? new Date(l.until + "T12:00").toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" }) : "—"],
+      l.location ? ["Afhalen", esc(l.location)] : null,
+      ["Aanbieder", esc(l.company) + (l.contact ? `<br><span style="color:var(--muted)">${esc(l.contact)}</span>` : "")],
+    ].filter(Boolean);
+    return `<dl class="specs">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  }
+
+  function lotCard(l, { example = false } = {}) {
+    const st = example ? { label: "Nog 3 dagen", cls: "ok", closed: false } : lotState(l);
+    const bids = example ? [] : bidsFor(l.id);
+    const top = bids[0];
+    const mine = !example && l.sellerId === S.me;
+    const myOffer = !example && myBidDoc()?.offers?.[l.id];
+    let action = "";
+    if (example) action = `<button class="btn primary small" type="button" tabindex="-1">Bieden</button>`;
+    else if (mine) action = `<button class="btn small" type="button" data-act="manage">Beheren</button>`;
+    else if (!st.closed && S.canWrite !== false && S.me) action = `<button class="btn primary small" type="button" data-act="bid" data-lot="${esc(l.id)}">${myOffer ? "Bod wijzigen" : "Bieden"}</button>`;
+
+    const bidLine = example ? `<div class="bidinfo">Hoogste bod <b>${euro.format(5.8)}</b> · 3 biedingen</div>`
+      : `<div class="bidinfo">${top ? `Hoogste bod <b>${euro.format(top.price)}</b> · ${bids.length} ${bids.length === 1 ? "bod" : "biedingen"}` : "Nog geen biedingen"}${myOffer ? ` · jouw bod <b>${euro.format(myOffer.price)}</b>` : ""}</div>`;
+
+    return `<article class="lot${st.closed ? " closed" : ""}">
+      <div class="label-strip"><span class="cat"><span class="sw ${esc(l.category)}"></span>${esc(l.category)} · ${esc(l.klasse)}${l.origin ? " · " + esc(l.origin) : ""}</span>
+        <span class="pill ${st.cls}">${mine && !st.closed ? "Jouw partij" : st.label}</span></div>
+      <div class="lot-body">
+        <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}</div>
+        ${specRows(l)}
+        ${l.note ? `<div class="note">${esc(l.note)}</div>` : ""}
+      </div>
+      <div class="lot-foot">
+        <div><div class="price">${euro.format(l.price)} <small>/ ${esc(unitSingular(l.unit))}</small></div>${bidLine}</div>
+        ${action}
+      </div>
+    </article>`;
+  }
+  function unitSingular(u) { return ({ colli: "collo", pallets: "pallet", kisten: "kist", zakken: "zak" }[u]) || u; }
+
+  const EXAMPLE = { product: "Trostomaten", ras: "Klasse I, maat B", category: "Groente", klasse: "Klasse I", origin: "NL", qty: 240, remaining: 240, unit: "colli", pack: "6 kg doos, 80 colli per pallet", minQty: 40, price: 6.5, location: "Barendrecht", company: "Kwekerij De Voorbeeldkas", contact: "010 000 0000", note: "Overschot na geannuleerde order. Kleur 7–8, morgen af te halen." };
+
+  function renderMarket() {
+    const box = $("#market");
+    let lots = allLots();
+    const openCount = lots.filter((l) => !lotState(l).closed).length;
+    $("#n-market").textContent = openCount;
+
+    if (!S.ready) {
+      box.innerHTML = `<div class="empty"><div><h2>Aanbod laden…</h2><p>De partijen worden opgehaald.</p></div><div class="example">${lotCard(EXAMPLE, { example: true })}</div></div>`;
+      return;
+    }
+    if (!lots.length) {
+      box.innerHTML = `<div class="empty"><div><h2>Nog geen restpartijen</h2>
+        <p>Heb je een overschot aan groente, fruit of aardappelen? Zet het hier binnen een minuut online. Collega-handelaren zien je partij direct en kunnen een bod doen per eenheid.</p>
+        ${S.canWrite !== false && S.me ? `<button class="btn primary" type="button" data-act="new">+ Eerste partij aanbieden</button>` : ""}</div>
+        <div class="example">${lotCard(EXAMPLE, { example: true })}</div></div>`;
+      return;
+    }
+    if (!S.showClosed) lots = lots.filter((l) => !lotState(l).closed);
+    if (S.cat) lots = lots.filter((l) => l.category === S.cat);
+    if (S.q) {
+      const q = S.q.toLowerCase();
+      lots = lots.filter((l) => [l.product, l.ras, l.origin, l.location, l.company, l.pack].join(" ").toLowerCase().includes(q));
+    }
+    const sorters = {
+      new: (a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""),
+      until: (a, b) => (a.until || "9999").localeCompare(b.until || "9999"),
+      price: (a, b) => a.price - b.price,
+      value: (a, b) => (b.remaining ?? b.qty) * b.price - (a.remaining ?? a.qty) * a.price,
+    };
+    lots.sort(sorters[S.sort]);
+    box.innerHTML = lots.length ? `<div class="grid">${lots.map((l) => lotCard(l)).join("")}</div>`
+      : `<div class="notice">Geen partijen gevonden met deze filters.</div>`;
+  }
+
+  function renderMine() {
+    const box = $("#mine");
+    const doc = myLotsDoc();
+    const lots = Object.entries((doc && doc.items) || {}).map(([id, it]) => ({ ...it, id, sellerId: S.me, company: it.company || doc.company, contact: it.contact || doc.contact }))
+      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    $("#n-mine").textContent = lots.filter((l) => !lotState(l).closed).length;
+    if (!lots.length) {
+      box.innerHTML = `<div class="empty" style="grid-template-columns:1fr"><div><h2>Je hebt nog niets aangeboden</h2>
+        <p>Partijen die je aanbiedt verschijnen hier, met alle biedingen eronder.</p>
+        ${S.canWrite !== false && S.me ? `<button class="btn primary" type="button" data-act="new">+ Partij aanbieden</button>` : ""}</div></div>`;
+      return;
+    }
+    box.innerHTML = lots.map((l) => {
+      const st = lotState(l);
+      const bids = bidsFor(l.id);
+      const accepted = l.accepted || {};
+      const rejected = l.rejected || {};
+      const rem = l.remaining ?? l.qty;
+      const soldQty = Object.values(accepted).reduce((s, a) => s + (a.qty || 0), 0);
+      const rows = bids.map((b) => {
+        const acc = accepted[b.bidderId];
+        const rej = rejected[b.bidderId];
+        const canAct = !st.closed && !acc && !rej;
+        const status = acc ? `<span class="pill ok">Gegund ${num.format(acc.qty)}</span>` : rej ? `<span class="pill off">Afgewezen</span>` : st.closed ? `<span class="pill off">Gesloten</span>` : `<span class="pill acc">Open</span>`;
+        return `<tr>
+          <td>${esc(b.company) || "Onbekend"}${b.contact ? `<div class="sub">${esc(b.contact)}</div>` : ""}${b.note ? `<div class="sub">“${esc(b.note)}”</div>` : ""}</td>
+          <td class="num">${euro.format(b.price)}<div class="sub">${b.price >= l.price ? "≥ vraagprijs" : Math.round((1 - b.price / l.price) * 100) + "% onder vraag"}</div></td>
+          <td class="num">${num.format(b.qty)} ${esc(l.unit)}</td>
+          <td class="num">${euro.format(b.price * Math.min(b.qty, rem || b.qty))}</td>
+          <td>${status}</td>
+          <td class="num">${canAct ? `<div class="actions" style="justify-content:flex-end"><button class="btn primary small" type="button" data-act="accept" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Accepteren</button><button class="btn small" type="button" data-act="reject" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Afwijzen</button></div>` : ""}</td>
+        </tr>`;
+      }).join("");
+      return `<div class="panel">
+        <div class="panel-head">
+          <div><h3>${esc(l.product)}${l.ras ? ` <span style="font-weight:500;color:var(--muted)">${esc(l.ras)}</span>` : ""}</h3>
+            <div class="meta">${num.format(rem)} van ${num.format(l.qty)} ${esc(l.unit)} beschikbaar · vraagprijs ${euro.format(l.price)} · ${soldQty ? `${num.format(soldQty)} gegund · ` : ""}<span class="pill ${st.cls}">${st.label}</span></div></div>
+          <div class="actions">
+            ${l.status === "ingetrokken" ? `<button class="btn small" type="button" data-act="reopen" data-lot="${esc(l.id)}">Heropenen</button>`
+              : st.key !== "sold" ? `<button class="btn small" type="button" data-act="edit" data-lot="${esc(l.id)}">Bewerken</button><button class="btn small" type="button" data-act="withdraw" data-lot="${esc(l.id)}">Intrekken</button>` : ""}
+          </div>
+        </div>
+        ${bids.length ? `<div class="tablewrap"><table class="bids"><thead><tr><th>Bieder</th><th class="num">Prijs</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+          : `<div class="nobids">Nog geen biedingen op deze partij.</div>`}
+      </div>`;
+    }).join("");
+  }
+
+  function renderBids() {
+    const box = $("#mybids");
+    const doc = myBidDoc();
+    const offers = Object.entries((doc && doc.offers) || {});
+    const lotsById = new Map(allLots().map((l) => [l.id, l]));
+    const items = offers.map(([lotId, o]) => {
+      const l = lotsById.get(lotId);
+      let status;
+      if (!l) status = { label: "Partij verwijderd", cls: "off", open: false };
+      else if (l.accepted && l.accepted[S.me]) status = { label: `Gegund: ${num.format(l.accepted[S.me].qty)} ${l.unit}`, cls: "ok", open: false };
+      else if (l.rejected && l.rejected[S.me]) status = { label: "Afgewezen", cls: "off", open: false };
+      else { const st = lotState(l); status = st.closed ? { label: "Niet gegund", cls: "off", open: false } : { label: "In behandeling", cls: "acc", open: true }; }
+      return { lotId, o, l, status };
+    }).sort((a, b) => (b.o.at || "").localeCompare(a.o.at || ""));
+    $("#n-bids").textContent = items.filter((i) => i.status.open).length;
+    if (!items.length) {
+      box.innerHTML = `<div class="empty" style="grid-template-columns:1fr"><div><h2>Nog geen biedingen</h2><p>Bied op een partij in het aanbod. Je ziet hier of de verkoper je bod accepteert.</p>
+        <button class="btn" type="button" data-act="goto-market">Naar het aanbod</button></div></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Partij</th><th class="num">Jouw bod</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>
+      ${items.map(({ lotId, o, l, status }) => {
+        const top = l ? bidsFor(lotId)[0] : null;
+        const winning = top && top.bidderId === S.me;
+        return `<tr>
+          <td><b>${esc(l ? l.product : o.product || "Partij")}</b>${l ? `<div class="sub">${esc(l.company)}${l.contact ? " · " + esc(l.contact) : ""}</div>` : ""}</td>
+          <td class="num">${euro.format(o.price)}${status.open && top ? `<div class="sub">${winning ? "Hoogste bod" : "Hoogste: " + euro.format(top.price)}</div>` : ""}</td>
+          <td class="num">${num.format(o.qty)} ${esc(l ? l.unit : "")}</td>
+          <td class="num">${euro.format(o.price * o.qty)}</td>
+          <td><span class="pill ${status.cls}">${status.label}</span></td>
+          <td class="num">${status.open ? `<div class="actions" style="justify-content:flex-end"><button class="btn small" type="button" data-act="bid" data-lot="${esc(lotId)}">Wijzigen</button><button class="btn small ghost" type="button" data-act="retract" data-lot="${esc(lotId)}">Intrekken</button></div>`
+            : `<button class="btn small ghost" type="button" data-act="retract" data-lot="${esc(lotId)}">Verwijderen</button>`}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div></div>`;
+  }
+
+  function renderStatus() {
+    const el = $("#status");
+    if (S.offline && S.token) {
+      el.hidden = false;
+      el.innerHTML = `<strong>Geen verbinding met de server.</strong> Wat je ziet kan verouderd zijn. De pagina probeert het elke 8 seconden opnieuw.`;
+    } else el.hidden = true;
+    $("#btn-new").hidden = !(S.me && S.canWrite !== false);
+  }
+
+  function render() {
+    renderStatus();
+    renderMarket();
+    renderMine();
+    renderBids();
+  }
+
+  // ---------- view switching ----------
+  function setView(v) {
+    S.view = v;
+    $$(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.view === v)));
+    $("#view-market").hidden = v !== "market";
+    $("#view-mine").hidden = v !== "mine";
+    $("#view-bids").hidden = v !== "bids";
+    $("#view-admin").hidden = v !== "admin";
+    $("#view-login").hidden = true;
+    if (v === "admin") loadUsers();
+    try { localStorage.setItem("rpb.view", v); } catch {}
+  }
+
+  // ---------- lot dialog ----------
+  const dlgLot = $("#dlg-lot");
+  function openLotDialog(lotId) {
+    S.editing = lotId || null;
+    const doc = myLotsDoc();
+    const l = lotId ? doc.items[lotId] : null;
+    $("#lot-title").textContent = l ? "Partij bewerken" : "Partij aanbieden";
+    $("#lot-submit").textContent = l ? "Opslaan" : "Publiceren";
+    const tomorrow = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    const v = (id, val) => ($(id).value = val ?? "");
+    v("#f-product", l?.product); v("#f-ras", l?.ras); v("#f-cat", l?.category || "Groente"); v("#f-klasse", l?.klasse || "Klasse I");
+    v("#f-herkomst", l?.origin || "NL"); v("#f-loc", l?.location); v("#f-qty", l?.qty); v("#f-unit", l?.unit || "colli");
+    v("#f-minqty", l?.minQty || ""); v("#f-price", l?.price); v("#f-until", l?.until || tomorrow); v("#f-pack", l?.pack); v("#f-note", l?.note);
+    v("#f-company", l?.company || doc?.company || S.user?.company || ""); v("#f-phone", l?.contact || doc?.contact || S.user?.contact || "");
+    $("#lot-err").textContent = "";
+    dlgLot.showModal();
+    $("#f-product").focus();
+  }
+  $("#form-lot").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = (id) => $(id).value.trim();
+    const qty = parseInt(val("#f-qty"), 10);
+    const price = parseFloat(val("#f-price").replace(",", "."));
+    const minQty = parseInt(val("#f-minqty"), 10) || 1;
+    const err = !val("#f-product") ? "Vul het product in." : !(qty > 0) ? "Vul een hoeveelheid groter dan 0 in." : !(price >= 0) ? "Vul een vraagprijs in." : !val("#f-until") ? "Kies tot wanneer de partij beschikbaar is." : !val("#f-company") ? "Vul je bedrijfsnaam in." : minQty > qty ? "Minimale afname is groter dan de partij." : "";
+    if (err) { $("#lot-err").textContent = err; return; }
+    const company = val("#f-company"), contact = val("#f-phone");
+    pref.set("company", company); pref.set("contact", contact);
+    const id = S.editing || newId();
+    const ok = await saveMyLots((doc) => {
+      doc.company = company; doc.contact = contact;
+      const prev = doc.items[id] || {};
+      const soldQty = Object.values(prev.accepted || {}).reduce((s, a) => s + (a.qty || 0), 0);
+      doc.items[id] = {
+        ...prev,
+        product: val("#f-product"), ras: val("#f-ras"), category: val("#f-cat"), klasse: val("#f-klasse"), origin: val("#f-herkomst"),
+        location: val("#f-loc"), qty, unit: val("#f-unit"), minQty, price, until: val("#f-until"), pack: val("#f-pack"), note: val("#f-note"),
+        company, contact,
+        remaining: Math.max(0, qty - soldQty),
+        status: prev.status === "ingetrokken" ? "ingetrokken" : (qty - soldQty <= 0 ? "verkocht" : "open"),
+        createdAt: prev.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    if (ok) { dlgLot.close(); toast(S.editing ? "Partij bijgewerkt." : "Partij gepubliceerd. Kopers zien hem nu in het aanbod."); }
+  });
+
+  // ---------- bid dialog ----------
+  const dlgBid = $("#dlg-bid");
+  function openBidDialog(lotId) {
+    const l = allLots().find((x) => x.id === lotId);
+    if (!l) return;
+    S.bidLot = l;
+    const mine = myBidDoc()?.offers?.[lotId];
+    const rem = l.remaining ?? l.qty;
+    const top = bidsFor(lotId)[0];
+    $("#bid-sub").textContent = `${l.product}${l.ras ? " · " + l.ras : ""} — ${num.format(rem)} ${l.unit} van ${l.company}. Vraagprijs ${euro.format(l.price)}${top ? `, hoogste bod ${euro.format(top.price)}` : ""}.`;
+    $("#b-price").value = mine ? mine.price : l.price;
+    $("#b-qty").value = mine ? Math.min(mine.qty, rem) : rem;
+    $("#b-qty").min = Math.min(l.minQty || 1, rem); $("#b-qty").max = rem;
+    $("#b-qty-hint").textContent = `${l.minQty > 1 ? "Min. " + num.format(Math.min(l.minQty, rem)) + ", " : ""}max. ${num.format(rem)} ${l.unit}`;
+    $("#b-note").value = mine?.note || "";
+    $("#b-company").value = myBidDoc()?.company || S.user?.company || "";
+    $("#b-phone").value = myBidDoc()?.contact || S.user?.contact || "";
+    $("#bid-err").textContent = "";
+    updateBidSum();
+    dlgBid.showModal();
+    $("#b-price").focus();
+  }
+  function updateBidSum() {
+    const l = S.bidLot; if (!l) return;
+    const p = parseFloat(String($("#b-price").value).replace(",", "."));
+    const q = parseInt($("#b-qty").value, 10);
+    $("#b-sum").textContent = p >= 0 && q > 0 ? `Totaal ${euro.format(p * q)} voor ${num.format(q)} ${l.unit}${p < l.price ? ` · ${Math.round((1 - p / l.price) * 100)}% onder vraagprijs` : ""}` : "Vul prijs en hoeveelheid in";
+  }
+  $("#b-price").addEventListener("input", updateBidSum);
+  $("#b-qty").addEventListener("input", updateBidSum);
+  $("#form-bid").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const l = S.bidLot; if (!l) return;
+    const rem = l.remaining ?? l.qty;
+    const price = parseFloat(String($("#b-price").value).replace(",", "."));
+    const qty = parseInt($("#b-qty").value, 10);
+    const min = Math.min(l.minQty || 1, rem);
+    const company = $("#b-company").value.trim(), contact = $("#b-phone").value.trim();
+    const err = !(price > 0) ? "Vul een prijs in." : !(qty >= min) ? `Bied minimaal ${num.format(min)} ${l.unit}.` : qty > rem ? `Er is nog maar ${num.format(rem)} ${l.unit} beschikbaar.` : !company ? "Vul je bedrijfsnaam in." : "";
+    if (err) { $("#bid-err").textContent = err; return; }
+    pref.set("company", company); pref.set("contact", contact);
+    const ok = await saveMyBids((doc) => {
+      doc.company = company; doc.contact = contact;
+      doc.offers[l.id] = { sellerId: l.sellerId, product: l.product, price, qty, note: $("#b-note").value.trim(), at: new Date().toISOString() };
+    });
+    if (ok) { dlgBid.close(); toast(`Bod van ${euro.format(price)} per ${unitSingular(l.unit)} geplaatst.`); }
+  });
+
+  $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
+
+  // ---------- actions ----------
+  document.addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-act]");
+    if (!t) return;
+    const act = t.dataset.act, lotId = t.dataset.lot, bidder = t.dataset.bidder;
+    if (act === "new") return openLotDialog();
+    if (act === "bid") return openBidDialog(lotId);
+    if (act === "manage") return setView("mine");
+    if (act === "goto-market") return setView("market");
+    if (act === "edit") return openLotDialog(lotId);
+    if (act === "withdraw" || act === "reopen") {
+      const ok = await saveMyLots((doc) => { const it = doc.items[lotId]; if (!it) return; it.status = act === "withdraw" ? "ingetrokken" : ((it.remaining ?? it.qty) > 0 ? "open" : "verkocht"); });
+      if (ok) toast(act === "withdraw" ? "Partij ingetrokken. Kopers zien hem niet meer." : "Partij staat weer in het aanbod.");
+      return;
+    }
+    if (act === "accept" || act === "reject") {
+      const b = bidsFor(lotId).find((x) => x.bidderId === bidder);
+      if (!b) return;
+      let gq = 0;
+      const ok = await saveMyLots((doc) => {
+        const it = doc.items[lotId]; if (!it) return;
+        if (act === "reject") { it.rejected = { ...(it.rejected || {}), [bidder]: { at: new Date().toISOString() } }; return; }
+        const rem = it.remaining ?? it.qty;
+        gq = Math.min(b.qty, rem);
+        it.accepted = { ...(it.accepted || {}), [bidder]: { qty: gq, price: b.price, at: new Date().toISOString() } };
+        it.remaining = rem - gq;
+        if (it.remaining <= 0) it.status = "verkocht";
+      });
+      if (ok) toast(act === "reject" ? "Bod afgewezen." : `Gegund: ${num.format(gq)} aan ${b.company || "bieder"}. Neem contact op voor levering en betaling.`);
+      return;
+    }
+    if (act === "retract") {
+      const ok = await saveMyBids((doc) => { delete doc.offers[lotId]; });
+      if (ok) toast("Bod verwijderd.");
+    }
+  });
+  $("#btn-new").addEventListener("click", () => openLotDialog());
+  $$(".tab").forEach((t) => t.addEventListener("click", () => setView(t.dataset.view)));
+  $("#cat-chips").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-cat]"); if (!c) return;
+    S.cat = c.dataset.cat;
+    $$("#cat-chips .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === c)));
+    renderMarket();
+  });
+  $("#q").addEventListener("input", (e) => { S.q = e.target.value.trim(); renderMarket(); });
+  $("#sort").addEventListener("change", (e) => { S.sort = e.target.value; renderMarket(); });
+  $("#show-closed").addEventListener("change", (e) => { S.showClosed = e.target.checked; renderMarket(); });
+
+  // ---------- login ----------
+  function setToken(t) { S.token = t || ""; try { t ? localStorage.setItem("rpb.token", t) : localStorage.removeItem("rpb.token"); } catch {} }
+  function signOutLocal() {
+    stopPolling();
+    setToken("");
+    S.user = null; S.me = null; S.canWrite = null; S.ready = false; S.lastNow = "";
+    S.lotsDocs = new Map(); S.bidsDocs = new Map();
+  }
+  function hideAllViews() { ["market", "mine", "bids", "admin"].forEach((v) => ($("#view-" + v).hidden = true)); }
+  async function showLogin(msg) {
+    document.body.classList.add("locked");
+    hideAllViews();
+    $("#view-login").hidden = false;
+    $("#status").hidden = true;
+    let needsSetup = false;
+    try { needsSetup = (await api("status")).needsSetup; } catch (e) { $("#login-err").textContent = e.message; }
+    $("#form-setup").hidden = !needsSetup;
+    $("#form-login").hidden = needsSetup;
+    if (!needsSetup) { $("#login-err").textContent = msg || $("#login-err").textContent || ""; $("#l-name").focus(); }
+    else $("#s-setup").focus();
+  }
+  function enterApp(user) {
+    S.user = user; S.me = user.id; S.canWrite = true;
+    document.body.classList.remove("locked");
+    $("#user-box").hidden = false;
+    $("#btn-account").textContent = user.name + (user.company ? " · " + user.company : "");
+    $("#tab-admin").hidden = user.role !== "beheerder";
+    let v = "market";
+    try { const s = localStorage.getItem("rpb.view"); if (["mine", "bids"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s; } catch {}
+    setView(v);
+    render();
+    startPolling();
+  }
+  $("#form-login").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("#l-name").value.trim(), code = $("#l-code").value;
+    if (!name || !code) { $("#login-err").textContent = "Vul je naam en code in."; return; }
+    $("#login-err").textContent = "";
+    try {
+      const d = await api("login", { method: "POST", body: { name, code } });
+      setToken(d.token); $("#l-code").value = "";
+      enterApp(d.user);
+    } catch (err) { $("#login-err").textContent = err.message; }
+  });
+  $("#form-setup").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = (id) => $(id).value.trim();
+    if ($("#s-code").value !== $("#s-code2").value) { $("#setup-err").textContent = "De twee codes zijn niet gelijk."; return; }
+    try {
+      const d = await api("setup", { method: "POST", body: { setupCode: val("#s-setup"), name: val("#s-name"), company: val("#s-company"), contact: val("#s-contact"), code: $("#s-code").value } });
+      setToken(d.token);
+      enterApp(d.user);
+      toast("Beheerdersaccount aangemaakt. Maak nu de handelaren aan onder Beheer.");
+    } catch (err) { $("#setup-err").textContent = err.message; }
+  });
+  $("#btn-logout").addEventListener("click", async () => {
+    try { await api("logout", { method: "POST" }); } catch {}
+    signOutLocal();
+    $("#user-box").hidden = true;
+    showLogin("Je bent uitgelogd.");
+  });
+
+  // ---------- account ----------
+  const dlgAcc = $("#dlg-account");
+  $("#btn-account").addEventListener("click", () => {
+    $("#acc-sub").textContent = `Ingelogd als ${S.user.name} (${S.user.role}).`;
+    $("#a-company").value = S.user.company || ""; $("#a-contact").value = S.user.contact || "";
+    $("#a-cur").value = ""; $("#a-new").value = ""; $("#acc-err").textContent = "";
+    dlgAcc.showModal();
+  });
+  $("#form-account").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { company: $("#a-company").value.trim(), contact: $("#a-contact").value.trim() };
+    if ($("#a-new").value) { body.newCode = $("#a-new").value; body.currentCode = $("#a-cur").value; }
+    try {
+      const d = await api("me", { method: "PATCH", body });
+      S.user = d.user;
+      $("#btn-account").textContent = d.user.name + (d.user.company ? " · " + d.user.company : "");
+      dlgAcc.close();
+      toast(body.newCode ? "Account en code opgeslagen." : "Account opgeslagen.");
+    } catch (err) { $("#acc-err").textContent = err.message; }
+  });
+
+  // ---------- beheer ----------
+  let users = [];
+  async function loadUsers() {
+    if (S.user?.role !== "beheerder") return;
+    try { users = (await api("users")).users; renderUsers(); }
+    catch (err) { $("#users-body").innerHTML = `<tr><td colspan="5" class="sub">${esc(err.message)}</td></tr>`; }
+  }
+  function renderUsers() {
+    $("#users-body").innerHTML = users.map((u) => `<tr>
+      <td><b>${esc(u.name)}</b>${u.id === S.me ? ' <span class="sub">(jij)</span>' : ""}${u.contact ? `<div class="sub">${esc(u.contact)}</div>` : ""}</td>
+      <td>${esc(u.company) || '<span class="sub">—</span>'}</td>
+      <td>${u.role === "beheerder" ? "Beheerder" : "Handelaar"}</td>
+      <td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Actief" : "Gedeactiveerd"}</span></td>
+      <td class="num"><div class="actions" style="justify-content:flex-end">
+        <button class="btn small" type="button" data-uact="code" data-uid="${esc(u.id)}">Nieuwe code</button>
+        <button class="btn small" type="button" data-uact="role" data-uid="${esc(u.id)}">${u.role === "beheerder" ? "Maak handelaar" : "Maak beheerder"}</button>
+        <button class="btn small ghost" type="button" data-uact="active" data-uid="${esc(u.id)}">${u.active ? "Deactiveren" : "Activeren"}</button>
+      </div></td></tr>`).join("") || `<tr><td colspan="5" class="sub">Nog geen gebruikers.</td></tr>`;
+  }
+  let codeFor = null;
+  const dlgCode = $("#dlg-code");
+  $("#users-body").addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-uact]"); if (!t) return;
+    const u = users.find((x) => x.id === t.dataset.uid); if (!u) return;
+    if (t.dataset.uact === "code") {
+      codeFor = u; $("#code-sub").textContent = `Voor ${u.name}. Bestaande sessies worden uitgelogd.`;
+      $("#c-code").value = ""; $("#code-err").textContent = ""; dlgCode.showModal(); return;
+    }
+    const body = t.dataset.uact === "role" ? { role: u.role === "beheerder" ? "handelaar" : "beheerder" } : { active: !u.active };
+    try { await api("users/" + encodeURIComponent(u.id), { method: "PATCH", body }); await loadUsers(); toast("Gebruiker bijgewerkt."); }
+    catch (err) { toast(err.message); }
+  });
+  $("#form-code").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("users/" + encodeURIComponent(codeFor.id), { method: "PATCH", body: { code: $("#c-code").value } });
+      dlgCode.close(); toast(`Nieuwe code ingesteld voor ${codeFor.name}.`);
+    } catch (err) { $("#code-err").textContent = err.message; }
+  });
+  $("#form-user").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = (id) => $(id).value.trim();
+    try {
+      const d = await api("users", { method: "POST", body: { name: val("#u-name"), company: val("#u-company"), contact: val("#u-contact"), code: $("#u-code").value, role: $("#u-role").value } });
+      ["#u-name", "#u-company", "#u-contact", "#u-code"].forEach((id) => ($(id).value = ""));
+      $("#user-err").textContent = "";
+      await loadUsers();
+      toast(`${d.user.name} kan nu inloggen.`);
+    } catch (err) { $("#user-err").textContent = err.message; }
+  });
+
+  // ---------- boot ----------
+  (async () => {
+    try { S.token = localStorage.getItem("rpb.token") || ""; } catch {}
+    if (!S.token) return showLogin();
+    try { const d = await api("me"); enterApp(d.user); }
+    catch (err) { if (err.status !== 401) showLogin(err.message); }
+  })();
+})();
+</script>
+</body>
+</html>
