@@ -412,6 +412,19 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   </form>
 </dialog>
 
+<dialog id="dlg-edituser">
+  <form id="form-edituser" novalidate>
+    <div class="dlg-head"><h2>Gegevens wijzigen</h2><p id="eu-sub"></p></div>
+    <div class="form" style="grid-template-columns:1fr">
+      <div class="field"><label for="eu-name">Naam (om mee in te loggen)</label><input id="eu-name" required></div>
+      <div class="field"><label for="eu-company">Bedrijfsnaam</label><input id="eu-company"></div>
+      <div class="field"><label for="eu-contact">Telefoon en/of e-mail</label><input id="eu-contact" placeholder="bijv. 06 1234 5678 / verkoop@bedrijf.nl"><span class="hint">Zichtbaar voor alle handelaren, en gebruikt door de knop Contact.</span></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="eu-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-code">
   <form id="form-code" novalidate>
     <div class="dlg-head"><h2>Nieuwe code</h2><p id="code-sub"></p></div>
@@ -438,7 +451,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
 
   const S = {
     token: "", user: null, me: null, canWrite: null, ready: false, offline: false, lastNow: "",
-    lotsDocs: new Map(), bidsDocs: new Map(),
+    lotsDocs: new Map(), bidsDocs: new Map(), profiles: {},
     view: "market", cat: "", q: "", sort: "new", showClosed: false,
     editing: null, bidLot: null,
   };
@@ -461,7 +474,8 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     for (const [sellerId, d] of S.lotsDocs) {
       const items = (d && d.items) || {};
       for (const [id, it] of Object.entries(items)) {
-        out.push({ ...it, id, sellerId, company: it.company || d.company || "", contact: it.contact || d.contact || "" });
+        const pr = S.profiles[sellerId] || {};
+        out.push({ ...it, id, sellerId, company: it.company || d.company || pr.company || "", contact: it.contact || d.contact || pr.contact || "" });
       }
     }
     return out;
@@ -478,7 +492,8 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     const out = [];
     for (const [bidderId, d] of S.bidsDocs) {
       const o = d && d.offers && d.offers[lotId];
-      if (o) out.push({ ...o, bidderId, company: d.company || "", contact: d.contact || "" });
+      const pr = S.profiles[bidderId] || {};
+      if (o) out.push({ ...o, bidderId, company: d.company || pr.company || "", contact: d.contact || pr.contact || "" });
     }
     return out.sort((a, b) => b.price - a.price);
   }
@@ -533,6 +548,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
         if (!map) continue;
         if (doc.data === null) map.delete(doc.id); else map.set(doc.id, doc.data);
       }
+      if (d.profiles) S.profiles = d.profiles;
       S.lastNow = d.now; S.ready = true;
       if (S.offline) { S.offline = false; }
       render();
@@ -1167,16 +1183,37 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
       <td>${u.role === "beheerder" ? "Beheerder" : "Handelaar"}</td>
       <td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Actief" : "Gedeactiveerd"}</span></td>
       <td class="num"><div class="actions" style="justify-content:flex-end">
+        <button class="btn small" type="button" data-uact="edit" data-uid="${esc(u.id)}">Gegevens wijzigen</button>
         <button class="btn small" type="button" data-uact="code" data-uid="${esc(u.id)}">Nieuwe code</button>
         <button class="btn small" type="button" data-uact="role" data-uid="${esc(u.id)}">${u.role === "beheerder" ? "Maak handelaar" : "Maak beheerder"}</button>
         <button class="btn small ghost" type="button" data-uact="active" data-uid="${esc(u.id)}">${u.active ? "Deactiveren" : "Activeren"}</button>
       </div></td></tr>`).join("") || `<tr><td colspan="5" class="sub">Nog geen gebruikers.</td></tr>`;
   }
+  let editFor = null;
+  const dlgEdit = $("#dlg-edituser");
+  $("#form-edituser").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { name: $("#eu-name").value.trim(), company: $("#eu-company").value.trim(), contact: $("#eu-contact").value.trim() };
+    if (!body.name) { $("#eu-err").textContent = "Vul een naam in."; return; }
+    try {
+      const d = await api("users/" + encodeURIComponent(editFor.id), { method: "PATCH", body });
+      if (d.user.id === S.me) { S.user = { ...S.user, ...d.user }; $("#btn-account").textContent = d.user.name + (d.user.company ? " · " + d.user.company : ""); }
+      S.profiles[d.user.id] = { company: d.user.company, contact: d.user.contact };
+      dlgEdit.close(); await loadUsers(); render();
+      toast(`Gegevens van ${d.user.name} opgeslagen.`);
+    } catch (err) { $("#eu-err").textContent = err.message; }
+  });
   let codeFor = null;
   const dlgCode = $("#dlg-code");
   $("#users-body").addEventListener("click", async (e) => {
     const t = e.target.closest("[data-uact]"); if (!t) return;
     const u = users.find((x) => x.id === t.dataset.uid); if (!u) return;
+    if (t.dataset.uact === "edit") {
+      editFor = u;
+      $("#eu-sub").textContent = `Wijzig de gegevens van ${u.name}. Nieuwe gegevens verschijnen ook bij bestaande partijen en biedingen waar niets eigens is ingevuld.`;
+      $("#eu-name").value = u.name; $("#eu-company").value = u.company || ""; $("#eu-contact").value = u.contact || "";
+      $("#eu-err").textContent = ""; dlgEdit.showModal(); $("#eu-company").focus(); return;
+    }
     if (t.dataset.uact === "code") {
       codeFor = u; $("#code-sub").textContent = `Voor ${u.name}. Bestaande sessies worden uitgelogd.`;
       $("#c-code").value = ""; $("#code-err").textContent = ""; dlgCode.showModal(); return;
