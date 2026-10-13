@@ -318,7 +318,12 @@ async function route(req) {
     } else {
       r = await q("SELECT collection, id, data FROM rpb_docs WHERE data IS NOT NULL");
     }
-    return json(200, { now: now.toISOString(), full: !since, docs: r.rows });
+    // Actuele bedrijfsnaam en contact per gebruiker, zodat oude partijen en biedingen
+    // de nieuwste gegevens tonen als daar zelf niets is ingevuld.
+    const p = await q("SELECT id, company, contact FROM rpb_users");
+    const profiles = {};
+    for (const row of p.rows) profiles[row.id] = { company: row.company, contact: row.contact };
+    return json(200, { now: now.toISOString(), full: !since, docs: r.rows, profiles });
   }
 
   // Eigen document schrijven: /api/doc/lots of /api/doc/bids
@@ -367,6 +372,15 @@ async function route(req) {
     if (losingAdmin && (await activeAdmins()) <= 1) throw httpError(409, "Er moet minstens één actieve beheerder blijven.");
     const company = body.company !== undefined ? str(body.company, 120) : u.company;
     const contact = body.contact !== undefined ? str(body.contact, 120) : u.contact;
+    let name = u.name;
+    if (body.name !== undefined) {
+      name = str(body.name, 60);
+      if (!name) throw httpError(400, "Vul een naam in.");
+      const key = nameKey(name);
+      const clash = await q("SELECT 1 FROM rpb_users WHERE name_key = $1 AND id <> $2", [key, b]);
+      if (clash.rows.length) throw httpError(409, "Er bestaat al een gebruiker met deze naam.");
+      await q("UPDATE rpb_users SET name = $2, name_key = $3 WHERE id = $1", [b, name, key]);
+    }
     await q("UPDATE rpb_users SET role = $2, active = $3, company = $4, contact = $5 WHERE id = $1", [b, role, active, company, contact]);
     if (body.code !== undefined) {
       validCode(body.code);
@@ -374,7 +388,7 @@ async function route(req) {
       await q("UPDATE rpb_users SET salt = $2, hash = $3, failed = 0, locked_until = NULL WHERE id = $1", [b, salt, hashCode(body.code, salt)]);
     }
     if (!active || body.code !== undefined) await q("DELETE FROM rpb_sessions WHERE user_id = $1", [b]);
-    return json(200, { user: publicUser({ ...u, role, active, company, contact }) });
+    return json(200, { user: publicUser({ ...u, name, role, active, company, contact }) });
   }
 
   throw httpError(404, "Onbekend adres.");
