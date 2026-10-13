@@ -121,6 +121,15 @@ dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-num
 .pill.off { background: var(--off-soft); color: var(--off); }
 .pill.acc { background: var(--accent-soft); color: var(--accent); }
 
+/* contact */
+.ct-card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; }
+.ct-company { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.1; overflow-wrap: anywhere; }
+.ct-line { margin-top: 4px; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; user-select: all; }
+.ct-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ct-actions a.btn { text-decoration: none; color: inherit; }
+.ct-actions a.btn.primary { color: var(--accent-ink); }
+.lot-foot .actions { flex-wrap: nowrap; }
+
 /* foto's */
 .thumbs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .thumbs button { padding: 0; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--bg); cursor: zoom-in; aspect-ratio: 1 / 1; max-width: 100%; }
@@ -365,6 +374,19 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   </form>
 </dialog>
 
+<dialog id="dlg-contact">
+  <div class="dlg-head"><h2>Contact opnemen</h2><p id="ct-sub"></p></div>
+  <div class="form" style="grid-template-columns:1fr">
+    <div class="ct-card">
+      <div class="ct-company" id="ct-company"></div>
+      <div class="ct-line" id="ct-line"></div>
+    </div>
+    <div class="field"><label for="ct-msg">Bericht</label><textarea id="ct-msg" rows="4"></textarea><span class="hint">Wordt ingevuld in WhatsApp of je e-mail. Je kunt het hier aanpassen.</span></div>
+    <div class="ct-actions" id="ct-actions"></div>
+  </div>
+  <div class="dlg-foot"><span class="hint" id="ct-hint"></span><button class="btn" type="button" data-close>Sluiten</button></div>
+</dialog>
+
 <dialog id="dlg-photo" class="lightbox">
   <div class="lb-top"><span id="lb-title"></span><button class="btn small" type="button" data-close>Sluiten</button></div>
   <div class="lb-stage">
@@ -575,7 +597,11 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     let action = "";
     if (example) action = `<button class="btn primary small" type="button" tabindex="-1">Bieden</button>`;
     else if (mine) action = `<button class="btn small" type="button" data-act="manage">Beheren</button>`;
-    else if (!st.closed && S.canWrite !== false && S.me) action = `<button class="btn primary small" type="button" data-act="bid" data-lot="${esc(l.id)}">${myOffer ? "Bod wijzigen" : "Bieden"}</button>`;
+    else {
+      const contactBtn = `<button class="btn small" type="button" data-act="contact" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">Contact</button>`;
+      const bidBtn = !st.closed && S.canWrite !== false && S.me ? `<button class="btn primary small" type="button" data-act="bid" data-lot="${esc(l.id)}">${myOffer ? "Bod wijzigen" : "Bieden"}</button>` : "";
+      action = `<div class="actions">${contactBtn}${bidBtn}</div>`;
+    }
 
     const bidLine = example ? `<div class="bidinfo">Hoogste bod <b>${euro.format(5.8)}</b> · 3 biedingen</div>`
       : `<div class="bidinfo">${top ? `Hoogste bod <b>${euro.format(top.price)}</b> · ${bids.length} ${bids.length === 1 ? "bod" : "biedingen"}` : "Nog geen biedingen"}${myOffer ? ` · jouw bod <b>${euro.format(myOffer.price)}</b>` : ""}</div>`;
@@ -834,6 +860,51 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     S.newPhotos = [];
   });
 
+  // ---------- contact ----------
+  const dlgContact = $("#dlg-contact");
+  function parseContact(s) {
+    const text = String(s || "").trim();
+    const email = (text.match(/[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/) || [])[0] || "";
+    const phoneRaw = (text.replace(email, "").match(/\+?[\d][\d\s\-().]{7,}\d/) || [])[0] || "";
+    let digits = phoneRaw.replace(/[^\d+]/g, "");
+    let intl = digits.startsWith("+") ? digits.slice(1) : digits.startsWith("00") ? digits.slice(2) : digits.startsWith("0") ? "31" + digits.slice(1) : digits;
+    if (intl.length < 9) intl = "";
+    return { text, email, phone: phoneRaw.trim(), tel: digits, wa: intl };
+  }
+  function openContact(sellerId, lotId) {
+    const l = allLots().find((x) => x.id === lotId && x.sellerId === sellerId);
+    if (!l) return;
+    const c = parseContact(l.contact);
+    const rem = l.remaining ?? l.qty;
+    $("#ct-sub").textContent = `Over ${l.product}${l.ras ? " · " + l.ras : ""}, ${num.format(rem)} ${l.unit} à ${euro.format(l.price)}.`;
+    $("#ct-company").textContent = l.company || "Aanbieder";
+    $("#ct-line").textContent = c.text || "Deze aanbieder heeft geen telefoonnummer of e-mailadres ingevuld.";
+    const me = S.user ? S.user.name + (S.user.company ? ", " + S.user.company : "") : "";
+    $("#ct-msg").value = `Goedendag,\n\nIk heb interesse in uw restpartij ${l.product}${l.ras ? " (" + l.ras + ")" : ""}: ${num.format(rem)} ${l.unit} à ${euro.format(l.price)} per ${unitSingular(l.unit)}, gezien op de Restpartijbeurs. Is de partij nog beschikbaar?\n\nMet vriendelijke groet,\n${me}`;
+    const subject = `Restpartij ${l.product}${l.ras ? " " + l.ras : ""}`;
+    const btns = [];
+    if (c.tel) btns.push(`<a class="btn primary" id="ct-call" href="tel:${esc(c.tel)}">Bellen</a>`);
+    if (c.wa) btns.push(`<a class="btn" id="ct-wa" href="#" target="_blank" rel="noopener">WhatsApp</a>`);
+    if (c.email) btns.push(`<a class="btn${c.tel ? "" : " primary"}" id="ct-mail" href="#">E-mail</a>`);
+    if (c.text) btns.push(`<button class="btn" type="button" id="ct-copy">Gegevens kopiëren</button>`);
+    $("#ct-actions").innerHTML = btns.join("");
+    $("#ct-hint").textContent = "";
+    const updateLinks = () => {
+      const msg = $("#ct-msg").value;
+      const wa = $("#ct-wa"); if (wa) wa.href = "https://wa.me/" + c.wa + "?text=" + encodeURIComponent(msg);
+      const mail = $("#ct-mail"); if (mail) mail.href = "mailto:" + c.email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(msg);
+    };
+    updateLinks();
+    $("#ct-msg").oninput = updateLinks;
+    const copy = $("#ct-copy");
+    if (copy) copy.onclick = async () => {
+      const t = `${l.company}\n${c.text}`;
+      try { await navigator.clipboard.writeText(t); $("#ct-hint").textContent = "Gekopieerd."; }
+      catch { const r = document.createRange(); r.selectNodeContents($("#ct-line")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("#ct-hint").textContent = "Geselecteerd. Druk op Ctrl+C om te kopiëren."; }
+    };
+    dlgContact.showModal();
+  }
+
   const dlgPhoto = $("#dlg-photo");
   let lb = { list: [], i: 0, title: "" };
   function showLb() {
@@ -947,6 +1018,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     if (!t) return;
     const act = t.dataset.act, lotId = t.dataset.lot, bidder = t.dataset.bidder;
     if (act === "photo") return openLightbox(t.dataset.seller, lotId, t.dataset.i);
+    if (act === "contact") return openContact(t.dataset.seller, lotId);
     if (act === "new") return openLotDialog();
     if (act === "bid") return openBidDialog(lotId);
     if (act === "manage") return setView("mine");
