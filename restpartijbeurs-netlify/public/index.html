@@ -151,6 +151,8 @@ dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-num
 .welcome { color: var(--ink) !important; white-space: pre-line; }
 .subbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; }
 .subbar span { color: var(--muted); }
+.reg-pay-opts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.field input[type=radio] { width: auto; padding: 0; flex: none; }
 .field input[type=checkbox] { width: auto; padding: 0; flex: none; }
 .field label.check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; white-space: nowrap; }
 #form-settings .form, #form-user .form { grid-template-columns: 1fr 1fr; }
@@ -329,10 +331,20 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
         <div class="field full"><label for="r-name">Jouw naam *</label><input id="r-name" autocomplete="username" required><span class="hint">Hiermee log je in.</span></div>
         <div class="field"><label for="r-code">Kies een code * (minstens 4 tekens)</label><input id="r-code" type="password" autocomplete="new-password" required></div>
         <div class="field"><label for="r-code2">Herhaal de code *</label><input id="r-code2" type="password" autocomplete="new-password" required></div>
+        <div class="fieldset-title" id="reg-pay-title" hidden>Abonnement</div>
+        <div class="field full" id="reg-pay" hidden>
+          <div class="ct-card">
+            <div><b id="reg-pay-price"></b></div>
+            <div class="reg-pay-opts">
+              <label class="check" style="color:var(--ink)"><input type="radio" name="r-pay" value="now" checked> Nu betalen met <span id="reg-pay-methods">iDEAL | Wero</span></label>
+              <label class="check" style="color:var(--ink)"><input type="radio" name="r-pay" value="later"> Later betalen, na goedkeuring</label>
+            </div>
+          </div>
+        </div>
         <div class="hp" aria-hidden="true"><label for="r-website">Website</label><input id="r-website" tabindex="-1" autocomplete="off"></div>
       </div>
       <div class="dlg-foot"><span class="err" id="reg-err"></span>
-        <div class="actions"><button class="btn" type="button" id="btn-to-login">Terug naar inloggen</button><button class="btn primary" type="submit">Aanvraag versturen</button></div></div>
+        <div class="actions"><button class="btn" type="button" id="btn-to-login">Terug naar inloggen</button><button class="btn primary" type="submit" id="reg-submit">Aanvraag versturen</button></div></div>
     </form>
     <div class="login" id="reg-done" hidden>
       <div class="dlg-head"><h2>Aanvraag ontvangen</h2><p id="reg-done-text"></p></div>
@@ -471,6 +483,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
           <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
           <div class="fieldset-title">Aanmelden en abonnement</div>
           <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
+          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-auto"> Aanvraag automatisch goedkeuren zodra het abonnement online is betaald</label><span class="hint">Uit: je controleert elke aanvraag zelf, ook als er al betaald is.</span></div>
           <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="number" min="0" step="0.01" inputmode="decimal"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
           <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="number" min="0" max="100" step="0.1" inputmode="decimal"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
           <div class="fieldset-title">Online betalen via Mollie</div>
@@ -1300,7 +1313,10 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
       $("#btn-retry").addEventListener("click", () => showLogin());
       return;
     }
+    // Heeft de gebruiker intussen al 'Account aanvragen' geopend, laat dat dan staan.
+    const busy = !needsSetup && (!$("#form-register").hidden || !$("#reg-done").hidden);
     $("#form-setup").hidden = !needsSetup;
+    if (busy) return;
     $("#form-login").hidden = needsSetup;
     $("#form-register").hidden = true; $("#reg-done").hidden = true;
     if (!needsSetup) { $("#login-err").textContent = msg || $("#login-err").textContent || ""; $("#l-name").focus(); }
@@ -1327,11 +1343,15 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     if (err) { $("#reg-err").textContent = err; return; }
     const btn = e.submitter; if (btn) btn.disabled = true;
     try {
-      await api("register", { method: "POST", body: {
+      const payNow = !$("#reg-pay").hidden && (document.querySelector("input[name=r-pay]:checked")?.value === "now");
+      const d = await api("register", { method: "POST", body: {
         company: val("#r-company"), kvk, phone: val("#r-phone"), email: val("#r-email"), note: val("#r-note"),
-        name: val("#r-name"), code: $("#r-code").value, website: $("#r-website").value,
+        name: val("#r-name"), code: $("#r-code").value, website: $("#r-website").value, payNow,
       } });
-      $("#reg-done-text").textContent = `Bedankt, ${val("#r-name")}. De beheerder bekijkt je aanvraag voor ${val("#r-company")}. Zodra die is goedgekeurd, log je in met de naam "${val("#r-name")}" en de code die je net hebt gekozen.`;
+      try { sessionStorage.setItem("rpb.regname", val("#r-name")); } catch {}
+      if (d.checkoutUrl) { location.href = d.checkoutUrl; return; }
+      $("#reg-done-text").textContent = `Bedankt, ${val("#r-name")}. De beheerder bekijkt je aanvraag voor ${val("#r-company")}. Zodra die is goedgekeurd, log je in met de naam "${val("#r-name")}" en de code die je net hebt gekozen.`
+        + (d.payError ? ` Online betalen lukte nu niet (${d.payError}); dat kan later via Mijn account.` : "");
       $("#l-name").value = val("#r-name");
       ["#r-company", "#r-kvk", "#r-phone", "#r-email", "#r-note", "#r-name", "#r-code", "#r-code2"].forEach((id) => ($(id).value = ""));
       $("#form-register").hidden = true; $("#reg-done").hidden = false;
@@ -1419,7 +1439,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     setPendingBadge(pend.length);
     $("#pending-body").innerHTML = pend.map((u) => `<tr>
       <td><b>${esc(u.name)}</b>${u.note ? `<div class="sub">“${esc(u.note)}”</div>` : ""}</td>
-      <td>${esc(u.company)}</td>
+      <td>${esc(u.company)}<div style="margin-top:4px">${u.paidUntil ? `<span class="pill ok">Betaald t/m ${fmtDate(u.paidUntil)}</span>` : `<span class="pill off">Nog niet betaald</span>`}</div></td>
       <td class="num">${u.kvk ? `<a href="https://www.kvk.nl/zoeken/?source=all&q=${encodeURIComponent(u.kvk)}" target="_blank" rel="noopener">${esc(u.kvk)}</a>` : "—"}</td>
       <td>${esc(u.contact) || "—"}</td>
       <td class="sub">${u.createdAt ? new Date(u.createdAt).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</td>
@@ -1694,8 +1714,53 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     $("#welcome-text").textContent = s.welcomeText || ""; $("#welcome-text").hidden = !s.welcomeText;
     $("#login-alt").hidden = !s.registrationOpen;
     $("#reg-subtext").textContent = s.subscriptionText || ""; $("#reg-subtext").hidden = !s.subscriptionText;
+    const canPay = !!(s.onlinePayment && s.subscriptionPrice > 0);
+    $("#reg-pay").hidden = $("#reg-pay-title").hidden = !canPay;
+    if (canPay) {
+      const excl = s.subscriptionPrice / 100, incl = Math.round(s.subscriptionPrice * (1 + (s.vatPercent || 0) / 100)) / 100;
+      $("#reg-pay-price").textContent = `${euro.format(excl)} per jaar excl. btw (${euro.format(incl)} incl. btw)`;
+      const names = { ideal: "iDEAL | Wero", wero: "Wero", bancontact: "Bancontact", creditcard: "creditcard" };
+      const ms = (s.payMethods || []).map((m) => names[m]).filter(Boolean);
+      $("#reg-pay-methods").textContent = ms.length ? [...new Set(ms)].join(" of ") : "iDEAL | Wero";
+      updateRegSubmit();
+    }
     $("#announce").textContent = s.announcement || ""; $("#announce").hidden = !(s.announcement && S.token);
   }
+  function updateRegSubmit() {
+    const now = !$("#reg-pay").hidden && document.querySelector("input[name=r-pay]:checked")?.value === "now";
+    $("#reg-submit").textContent = now ? "Aanvragen en betalen" : "Aanvraag versturen";
+  }
+  $$("input[name=r-pay]").forEach((r) => r.addEventListener("change", updateRegSubmit));
+
+  // Terug van de betaalpagina na een aanvraag: /?aanvraag=<ref>
+  async function handleRequestReturn() {
+    const ref = new URLSearchParams(location.search).get("aanvraag");
+    if (!ref) return false;
+    history.replaceState(null, "", location.pathname);
+    let name = ""; try { name = sessionStorage.getItem("rpb.regname") || ""; } catch {}
+    $("#form-login").hidden = true; $("#form-register").hidden = true; $("#reg-done").hidden = false;
+    $("#reg-done-text").textContent = "Betaling controleren…";
+    if (name) $("#l-name").value = name;
+    for (let i = 0; i < 10; i++) {
+      try {
+        const st = await api("pay/request-status?ref=" + encodeURIComponent(ref));
+        if (st.status === "paid") {
+          $("#reg-done-text").textContent = st.approved
+            ? `Betaling gelukt en je account is actief. Je abonnement is geldig t/m ${fmtDate(st.validUntil)}. Log in met je naam en code.`
+            : `Betaling gelukt, je abonnement is geldig t/m ${fmtDate(st.validUntil)}. De beheerder keurt je aanvraag zo snel mogelijk goed; daarna kun je inloggen.`;
+          return true;
+        }
+        if (["canceled", "expired", "failed"].includes(st.status)) {
+          $("#reg-done-text").textContent = `De betaling is ${st.status === "canceled" ? "geannuleerd" : "niet gelukt"}. Je aanvraag is wel ontvangen. Na goedkeuring kun je het abonnement betalen via Mijn account.`;
+          return true;
+        }
+      } catch (err) { $("#reg-done-text").textContent = err.message; return true; }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    $("#reg-done-text").textContent = "Je aanvraag is ontvangen. De betaling wordt nog verwerkt; de beheerder ziet het resultaat in Beheer.";
+    return true;
+  }
+
   async function loadSettings() { try { applySettings((await api("status")).settings); } catch {} }
   // ---------- abonnement betalen (Mollie) ----------
   async function loadMySub() {
@@ -1765,6 +1830,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   function fillSettings() {
     const s = S.settings || {};
     $("#st-vat").value = s.vatPercent ?? 21;
+    $("#st-auto").checked = !!s.autoApprovePaid;
     $$("input[name=st-pm]").forEach((c) => (c.checked = (s.payMethods || []).includes(c.value)));
     $("#st-mollie").innerHTML = s.onlinePayment
       ? `<span class="pill ${s.paymentTestMode ? "warn" : "ok"}">${s.paymentTestMode ? "Testmodus" : "Live"}</span> Mollie is gekoppeld. ${s.paymentTestMode ? "Betalingen zijn testbetalingen; er wordt geen geld overgemaakt." : "Handelaren kunnen hun abonnement online betalen."}`
@@ -1779,7 +1845,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
       const d = await api("admin/settings", { method: "PUT", body: {
         siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
         registrationOpen: $("#st-reg").checked, subscriptionPrice: $("#st-price").value || "0", subscriptionText: $("#st-subtext").value,
-        vatPercent: $("#st-vat").value || "0", payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
+        vatPercent: $("#st-vat").value || "0", autoApprovePaid: $("#st-auto").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
       } });
       applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");
     } catch (err) { $("#st-err").textContent = err.message; }
@@ -1788,7 +1854,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   // ---------- boot ----------
   (async () => {
     try { S.token = localStorage.getItem("rpb.token") || ""; } catch {}
-    if (!S.token) return showLogin();
+    if (!S.token) { await showLogin(); handleRequestReturn(); return; }
     try { const d = await api("me"); enterApp(d.user); }
     catch (err) { if (err.status !== 401) showLogin(err.message); }
   })();
