@@ -121,6 +121,48 @@ dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-num
 .pill.off { background: var(--off-soft); color: var(--off); }
 .pill.acc { background: var(--accent-soft); color: var(--accent); }
 
+/* beheeromgeving */
+.admin-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+.admin-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 120px); }
+.admin-nav button { display: flex; align-items: center; gap: 10px; background: none; border: 0; border-radius: var(--r); padding: 9px 12px; text-align: left; cursor: pointer; font-size: 15px; color: var(--ink); }
+.admin-nav button:hover { background: var(--surface); }
+.admin-nav button[aria-current="page"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-weight: 600; }
+.admin-nav svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.admin-nav .n { margin-left: auto; font-size: 12px; font-weight: 600; border-radius: 99px; padding: 1px 7px; }
+.admin-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.admin-main > [data-pane] { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pane-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pane-head h2 { font-family: var(--font-display); font-size: 26px; text-transform: uppercase; letter-spacing: .02em; margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; min-width: 0; }
+.tile-label { color: var(--muted); font-size: 14px; }
+.tile-value { font-family: var(--font-display); font-weight: 700; font-size: 38px; line-height: 1.1; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tile-sub { color: var(--muted); font-size: 13px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.mini-list { list-style: none; margin: 0; padding: 0; }
+.mini-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; align-items: center; }
+.mini-list li:last-child { border-bottom: 0; }
+.mini-list .sub { white-space: nowrap; }
+.menu-wrap { position: relative; display: inline-block; }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 8px 24px rgba(10, 20, 15, .14); min-width: 190px; padding: 4px; display: flex; flex-direction: column; }
+.menu button { background: none; border: 0; text-align: left; padding: 8px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+.menu button:hover { background: var(--bg); }
+.announce { background: var(--warn-soft); color: var(--ink); border: 1px solid var(--warn); border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; white-space: pre-line; overflow-wrap: anywhere; }
+.welcome { color: var(--ink) !important; white-space: pre-line; }
+.subbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; }
+.subbar span { color: var(--muted); }
+.field input[type=checkbox] { width: auto; padding: 0; flex: none; }
+.field label.check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; white-space: nowrap; }
+#form-settings .form, #form-user .form { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1000px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dash-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .admin-layout { grid-template-columns: 1fr; gap: 12px; }
+  .admin-nav { position: static; flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 2px; }
+  .admin-nav button { white-space: nowrap; padding: 8px 10px; font-size: 14px; }
+  #form-settings .form, #form-user .form { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) { .tile-value { font-size: 30px; } .tile { padding: 14px; } }
+
 /* contact */
 .ct-card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; }
 .ct-company { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.1; overflow-wrap: anywhere; }
@@ -217,6 +259,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
 .linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .pending-panel { margin-bottom: 16px; border-color: var(--warn); }
+.bids a { color: var(--accent); font-weight: 600; }
 .tab .n.alert { background: var(--warn-soft); color: var(--warn); }
 .login .dlg-foot { justify-content: flex-end; }
 .right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -236,7 +279,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
 <header class="top">
   <div class="wrap">
     <div class="top-row">
-      <div class="brand"><h1>Restpartijbeurs</h1><span>Aardappelen · groente · fruit</span></div>
+      <div class="brand"><h1 id="site-name">Restpartijbeurs</h1><span>Aardappelen · groente · fruit</span></div>
       <div class="right">
         <div class="user" id="user-box" hidden>
           <button class="who" id="btn-account" type="button" title="Mijn account"></button>
@@ -256,19 +299,24 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
 
 <main class="wrap">
   <div id="status" class="notice" hidden></div>
+  <div id="announce" class="announce" role="status" hidden></div>
+  <div id="subbar" class="subbar" hidden>
+    <div><strong id="subbar-title"></strong> <span id="subbar-text"></span></div>
+    <button class="btn primary small" type="button" id="subbar-pay" hidden></button>
+  </div>
 
   <section id="view-login" hidden>
     <form class="login" id="form-login" novalidate>
-      <div class="dlg-head"><h2>Inloggen</h2><p>Log in met je naam en code.</p></div>
+      <div class="dlg-head"><h2>Inloggen</h2><p class="welcome" id="welcome-text" hidden></p><p>Log in met je naam en code.</p></div>
       <div class="form">
         <div class="field"><label for="l-name">Naam</label><input id="l-name" autocomplete="username" required></div>
         <div class="field"><label for="l-code">Code</label><input id="l-code" type="password" autocomplete="current-password" required></div>
       </div>
       <div class="dlg-foot"><span class="err" id="login-err"></span><button class="btn primary" type="submit">Inloggen</button></div>
-      <div class="login-alt">Nog geen account? <button class="linkbtn" type="button" id="btn-to-register">Account aanvragen</button></div>
+      <div class="login-alt" id="login-alt">Nog geen account? <button class="linkbtn" type="button" id="btn-to-register">Account aanvragen</button></div>
     </form>
     <form class="login wide" id="form-register" novalidate hidden>
-      <div class="dlg-head"><h2>Account aanvragen</h2><p>Voor bedrijven die handelen in aardappelen, groente en fruit. De beheerder controleert je aanvraag; daarna kun je inloggen.</p></div>
+      <div class="dlg-head"><h2>Account aanvragen</h2><p>Voor bedrijven die handelen in aardappelen, groente en fruit. De beheerder controleert je aanvraag; daarna kun je inloggen.</p><p class="welcome" id="reg-subtext" hidden></p></div>
       <div class="form">
         <div class="fieldset-title">Bedrijf</div>
         <div class="field"><label for="r-company">Bedrijfsnaam *</label><input id="r-company" autocomplete="organization" required></div>
@@ -336,18 +384,46 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   </section>
 
   <section id="view-admin" hidden>
+   <div class="admin-layout">
+    <nav class="admin-nav" aria-label="Beheer">
+      <button type="button" data-apane="dash" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-3"/></svg>Dashboard</button>
+      <button type="button" data-apane="users"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.8a3.3 3.3 0 0 1 0 6.4M18 14.8c1.9.7 3 2.4 3.5 5.2"/></svg>Gebruikers <span class="n alert" id="n-pending2" hidden></span></button>
+      <button type="button" data-apane="lots"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/></svg>Restpartijen</button>
+      <button type="button" data-apane="log"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="3" y="14" width="5" height="5" rx="1"/><path d="M11 6h10M11 9h6M11 16h10M11 19h6"/></svg>Logboek</button>
+      <button type="button" data-apane="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>Website-instellingen</button>
+    </nav>
+    <div class="admin-main">
+
+    <div data-pane="dash">
+      <div class="pane-head"><h2>Dashboard</h2><span class="sub" id="dash-asof"></span></div>
+      <div class="tiles" id="tiles">
+        <div class="tile"><div class="tile-label">Totale omzet</div><div class="tile-value" id="t-rev">—</div><div class="tile-sub" id="t-rev-sub"></div></div>
+        <div class="tile"><div class="tile-label">Aantal klanten</div><div class="tile-value" id="t-cust">—</div><div class="tile-sub" id="t-cust-sub"></div></div>
+        <div class="tile"><div class="tile-label">Aantal betaalde klanten</div><div class="tile-value" id="t-paid">—</div><div class="tile-sub" id="t-paid-sub"></div></div>
+        <div class="tile"><div class="tile-label">Aantal restpartijen</div><div class="tile-value" id="t-lots">—</div><div class="tile-sub" id="t-lots-sub"></div></div>
+      </div>
+      <div class="dash-grid">
+        <div class="panel">
+          <div class="panel-head"><div><h3>Abonnementen om op te volgen</h3><div class="meta">Verlopen, of verloopt binnen 30 dagen.</div></div></div>
+          <div id="dash-attention"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>Laatste activiteit</h3></div><button class="btn small" type="button" data-goto-pane="log">Volledig logboek</button></div>
+          <div id="dash-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <div data-pane="users" hidden>
+    <div class="pane-head"><h2>Gebruikers</h2><button class="btn primary small" type="button" id="btn-show-newuser">+ Nieuwe gebruiker</button></div>
     <div class="panel pending-panel" id="pending-panel" hidden>
       <div class="panel-head"><div><h3>Aanvragen <span class="pill warn" id="pending-n"></span></h3><div class="meta">Controleer het bedrijf, bijvoorbeeld via het KvK-nummer, voor je een aanvraag goedkeurt.</div></div></div>
       <div class="tablewrap"><table class="bids"><thead><tr><th>Naam</th><th>Bedrijf</th><th>KvK</th><th>Contact</th><th>Aangevraagd</th><th></th></tr></thead><tbody id="pending-body"></tbody></table></div>
     </div>
-    <div class="admin-grid">
-      <div class="panel">
-        <div class="panel-head"><div><h3>Gebruikers</h3><div class="meta">Handelaren kunnen aanbieden, bieden en gunnen. Beheerders beheren ook de gebruikers.</div></div></div>
-        <div class="tablewrap"><table class="bids" id="users-table"><thead><tr><th>Naam</th><th>Bedrijf</th><th>Rol</th><th>Status</th><th></th></tr></thead><tbody id="users-body"></tbody></table></div>
-      </div>
-      <form class="panel" id="form-user" novalidate>
-        <div class="panel-head"><h3>Nieuwe gebruiker</h3></div>
-        <div class="form" style="grid-template-columns:1fr">
+    <div class="stack">
+      <form class="panel" id="form-user" novalidate hidden>
+        <div class="panel-head"><h3>Nieuwe gebruiker</h3><button class="btn small ghost" type="button" id="btn-hide-newuser">Sluiten</button></div>
+        <div class="form">
           <div class="field"><label for="u-name">Naam (om mee in te loggen)</label><input id="u-name" required></div>
           <div class="field"><label for="u-company">Bedrijfsnaam</label><input id="u-company"></div>
           <div class="field"><label for="u-contact">Telefoon of e-mail</label><input id="u-contact"></div>
@@ -356,7 +432,65 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
         </div>
         <div class="dlg-foot"><span class="err" id="user-err"></span><button class="btn primary" type="submit">Gebruiker aanmaken</button></div>
       </form>
+      <div class="panel">
+        <div class="panel-head"><div><h3>Alle gebruikers</h3><div class="meta">Handelaren kunnen aanbieden, bieden en gunnen. Beheerders beheren ook de gebruikers en de website.</div></div>
+          <input class="search" id="users-q" type="search" placeholder="Zoek op naam, bedrijf of KvK" style="flex:0 1 260px"></div>
+        <div class="tablewrap"><table class="bids" id="users-table"><thead><tr><th>Naam</th><th>Bedrijf</th><th>Rol</th><th>Abonnement</th><th>Status</th><th></th></tr></thead><tbody id="users-body"></tbody></table></div>
+      </div>
     </div>
+    </div>
+
+    <div data-pane="lots" hidden>
+      <div class="pane-head"><h2>Restpartijen</h2>
+        <div class="chips" id="alots-filter">
+          <button class="chip" type="button" data-f="open" aria-pressed="true">Open</button>
+          <button class="chip" type="button" data-f="closed" aria-pressed="false">Afgesloten</button>
+          <button class="chip" type="button" data-f="" aria-pressed="false">Alle</button>
+        </div></div>
+      <div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Partij</th><th>Aanbieder</th><th class="num">Beschikbaar</th><th class="num">Vraagprijs</th><th class="num">Biedingen</th><th>Houdbaar tot</th><th>Status</th><th></th></tr></thead><tbody id="alots-body"></tbody></table></div></div>
+    </div>
+
+    <div data-pane="log" hidden>
+      <div class="pane-head"><h2>Logboek</h2>
+        <select class="sel" id="log-kind" aria-label="Soort activiteit">
+          <option value="">Alle activiteit</option><option value="inloggen">Inloggen</option><option value="account">Aanvragen</option>
+          <option value="partij">Partijen</option><option value="bod">Biedingen</option><option value="gunning">Gunningen</option>
+          <option value="betaling">Betalingen</option><option value="beheer">Beheer</option>
+        </select></div>
+      <div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Tijdstip</th><th>Gebruiker</th><th>Soort</th><th>Wat</th></tr></thead><tbody id="log-body"></tbody></table></div>
+        <div class="nobids" style="text-align:center"><button class="btn small" type="button" id="log-more" hidden>Meer laden</button></div></div>
+      <p class="sub" style="margin-top:8px">De laatste 5.000 regels worden bewaard.</p>
+    </div>
+
+    <div data-pane="settings" hidden>
+      <div class="pane-head"><h2>Website-instellingen</h2></div>
+      <form class="panel" id="form-settings" novalidate>
+        <div class="form">
+          <div class="field full"><label for="st-name">Naam van de website</label><input id="st-name" maxlength="60"><span class="hint">Bovenaan elke pagina en in het tabblad van de browser.</span></div>
+          <div class="field full"><label for="st-welcome">Welkomsttekst op het inlogscherm</label><textarea id="st-welcome" rows="3" maxlength="1000" placeholder="bijv. Dé handelsplek voor restpartijen AGF in de regio."></textarea></div>
+          <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
+          <div class="fieldset-title">Aanmelden en abonnement</div>
+          <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
+          <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="number" min="0" step="0.01" inputmode="decimal"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
+          <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="number" min="0" max="100" step="0.1" inputmode="decimal"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
+          <div class="fieldset-title">Online betalen via Mollie</div>
+          <div class="field full"><div class="ct-card" id="st-mollie"></div></div>
+          <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Betaalmethoden</span>
+            <div class="chips" style="margin-top:6px">
+              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="ideal"> iDEAL | Wero</label>
+              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="wero"> Wero</label>
+              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="bancontact"> Bancontact</label>
+              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="creditcard"> Creditcard</label>
+            </div>
+            <span class="hint">Zet alleen methoden aan die ook in je Mollie-dashboard actief zijn. Niets aangevinkt: Mollie toont alles wat in je account aan staat. Wero is in Nederland vanaf oktober 2026 beschikbaar en staat bij Mollie nog in bèta.</span></div>
+          <div class="field full"><label for="st-subtext">Tekst bij het aanvraagformulier</label><input id="st-subtext" maxlength="300" placeholder="bijv. Abonnement € 120 per jaar excl. btw, factuur na goedkeuring."></div>
+        </div>
+        <div class="dlg-foot"><span class="err" id="st-err"></span><button class="btn primary" type="submit">Opslaan</button></div>
+      </form>
+    </div>
+
+    </div>
+   </div>
   </section>
 </main>
 
@@ -439,12 +573,32 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     <div class="form">
       <div class="field"><label for="a-company">Bedrijfsnaam</label><input id="a-company"></div>
       <div class="field"><label for="a-contact">Telefoon of e-mail</label><input id="a-contact"></div>
+      <div class="fieldset-title" id="acc-sub-title" hidden>Abonnement</div>
+      <div class="field full" id="acc-sub" hidden><div class="ct-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span id="acc-sub-text"></span><button class="btn primary small" type="button" id="acc-sub-pay" hidden></button></div></div>
       <div class="fieldset-title">Code wijzigen (optioneel)</div>
       <div class="field"><label for="a-cur">Huidige code</label><input id="a-cur" type="password" autocomplete="current-password"></div>
       <div class="field"><label for="a-new">Nieuwe code</label><input id="a-new" type="password" autocomplete="new-password"></div>
     </div>
     <div class="dlg-foot"><span class="err" id="acc-err"></span>
       <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-pay">
+  <div class="dlg-head"><h2>Abonnement</h2><p id="pay-sub"></p></div>
+  <div class="form" style="grid-template-columns:1fr">
+    <div class="tablewrap" style="border:1px solid var(--line);border-radius:var(--r)"><table class="bids"><thead><tr><th>Betaald op</th><th class="num">Bedrag</th><th>Geldig t/m</th><th>Notitie</th><th></th></tr></thead><tbody id="pay-body"></tbody></table></div>
+  </div>
+  <form id="form-pay" novalidate>
+    <div class="form">
+      <div class="fieldset-title">Betaling registreren</div>
+      <div class="field"><label for="p-amount">Bedrag (€, excl. btw)</label><input id="p-amount" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+      <div class="field"><label for="p-paid">Betaald op</label><input id="p-paid" type="date" required></div>
+      <div class="field"><label for="p-until">Abonnement geldig t/m</label><input id="p-until" type="date" required><span class="hint">Standaard een jaar na de betaaldatum.</span></div>
+      <div class="field"><label for="p-note">Notitie</label><input id="p-note" maxlength="200" placeholder="bijv. factuur 2026-014"></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="pay-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Sluiten</button><button class="btn primary" type="submit">Betaling registreren</button></div></div>
   </form>
 </dialog>
 
@@ -586,11 +740,12 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
         if (doc.data === null) map.delete(doc.id); else map.set(doc.id, doc.data);
       }
       if (d.profiles) S.profiles = d.profiles;
+      if (S.view === "admin" && S.apane === "lots") setTimeout(renderAdminLots, 0);
       if (typeof d.pendingCount === "number") {
         const changed = d.pendingCount !== S.pendingCount;
         S.pendingCount = d.pendingCount;
-        $("#n-pending").hidden = !d.pendingCount; $("#n-pending").textContent = d.pendingCount;
-        if (changed && S.view === "admin") loadUsers();
+        setPendingBadge(d.pendingCount);
+        if (changed && S.view === "admin") refreshAdminPane();
       }
       S.lastNow = d.now; S.ready = true;
       if (S.offline) { S.offline = false; }
@@ -835,7 +990,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     $("#view-bids").hidden = v !== "bids";
     $("#view-admin").hidden = v !== "admin";
     $("#view-login").hidden = true;
-    if (v === "admin") loadUsers();
+    if (v === "admin") setAdminPane(S.apane || "dash");
     try { localStorage.setItem("rpb.view", v); } catch {}
   }
 
@@ -1129,14 +1284,14 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     S.user = null; S.me = null; S.canWrite = null; S.ready = false; S.lastNow = "";
     S.lotsDocs = new Map(); S.bidsDocs = new Map();
   }
-  function hideAllViews() { ["market", "mine", "bids", "admin"].forEach((v) => ($("#view-" + v).hidden = true)); }
+  function hideAllViews() { ["market", "mine", "bids", "admin"].forEach((v) => ($("#view-" + v).hidden = true)); $("#announce").hidden = true; $("#subbar").hidden = true; }
   async function showLogin(msg) {
     document.body.classList.add("locked");
     hideAllViews();
     $("#view-login").hidden = false;
     $("#status").hidden = true;
     let needsSetup = false;
-    try { needsSetup = (await api("status")).needsSetup; }
+    try { const st = await api("status"); needsSetup = st.needsSetup; applySettings(st.settings); }
     catch (e) {
       $("#form-setup").hidden = true; $("#form-login").hidden = true;
       const el = $("#status"); el.hidden = false;
@@ -1190,10 +1345,15 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     $("#btn-account").textContent = user.name + (user.company ? " · " + user.company : "");
     $("#tab-admin").hidden = user.role !== "beheerder";
     let v = "market";
-    try { const s = localStorage.getItem("rpb.view"); if (["mine", "bids"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s; } catch {}
+    try {
+      const s = localStorage.getItem("rpb.view"); if (["mine", "bids"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s;
+      const ap = localStorage.getItem("rpb.apane"); if (["dash", "users", "lots", "log", "settings"].includes(ap)) S.apane = ap;
+    } catch {}
     setView(v);
     render();
     startPolling();
+    loadSettings();
+    loadMySub().then(handlePaymentReturn);
   }
   $("#form-login").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1249,14 +1409,14 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   let users = [];
   async function loadUsers() {
     if (S.user?.role !== "beheerder") return;
-    try { users = (await api("users")).users; renderUsers(); }
-    catch (err) { $("#users-body").innerHTML = `<tr><td colspan="5" class="sub">${esc(err.message)}</td></tr>`; }
+    try { const d = await api("users"); users = d.users; S.today = d.today; renderUsers(); }
+    catch (err) { $("#users-body").innerHTML = `<tr><td colspan="6" class="sub">${esc(err.message)}</td></tr>`; }
   }
   function renderUsers() {
     const pend = users.filter((u) => u.pending);
     $("#pending-panel").hidden = !pend.length;
     $("#pending-n").textContent = pend.length === 1 ? "1 open" : `${pend.length} open`;
-    $("#n-pending").hidden = !pend.length; $("#n-pending").textContent = pend.length; S.pendingCount = pend.length;
+    setPendingBadge(pend.length);
     $("#pending-body").innerHTML = pend.map((u) => `<tr>
       <td><b>${esc(u.name)}</b>${u.note ? `<div class="sub">“${esc(u.note)}”</div>` : ""}</td>
       <td>${esc(u.company)}</td>
@@ -1267,18 +1427,43 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
         <button class="btn primary small" type="button" data-uact="approve" data-uid="${esc(u.id)}">Goedkeuren</button>
         <button class="btn small" type="button" data-uact="reject" data-uid="${esc(u.id)}">Afwijzen</button>
       </div></td></tr>`).join("");
-    $("#users-body").innerHTML = users.filter((u) => !u.pending).map((u) => `<tr>
+    const uq = ($("#users-q").value || "").trim().toLowerCase();
+    const list = users.filter((u) => !u.pending && (!uq || [u.name, u.company, u.kvk, u.contact].join(" ").toLowerCase().includes(uq)));
+    $("#users-body").innerHTML = list.map((u) => `<tr>
       <td><b>${esc(u.name)}</b>${u.id === S.me ? ' <span class="sub">(jij)</span>' : ""}${u.contact ? `<div class="sub">${esc(u.contact)}</div>` : ""}</td>
       <td>${esc(u.company) || '<span class="sub">—</span>'}${u.kvk ? `<div class="sub">KvK ${esc(u.kvk)}</div>` : ""}</td>
       <td>${u.role === "beheerder" ? "Beheerder" : "Handelaar"}</td>
+      <td>${subPill(u.paidUntil)}${u.paidTotal ? `<div class="sub">${euro.format(u.paidTotal)} totaal</div>` : ""}</td>
       <td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Actief" : "Gedeactiveerd"}</span></td>
-      <td class="num"><div class="actions" style="justify-content:flex-end">
-        <button class="btn small" type="button" data-uact="edit" data-uid="${esc(u.id)}">Gegevens wijzigen</button>
-        <button class="btn small" type="button" data-uact="code" data-uid="${esc(u.id)}">Nieuwe code</button>
-        <button class="btn small" type="button" data-uact="role" data-uid="${esc(u.id)}">${u.role === "beheerder" ? "Maak handelaar" : "Maak beheerder"}</button>
-        <button class="btn small ghost" type="button" data-uact="active" data-uid="${esc(u.id)}">${u.active ? "Deactiveren" : "Activeren"}</button>
-      </div></td></tr>`).join("") || `<tr><td colspan="5" class="sub">Nog geen gebruikers.</td></tr>`;
+      <td class="num"><div class="actions" style="justify-content:flex-end;flex-wrap:nowrap">
+        <button class="btn small" type="button" data-uact="pay" data-uid="${esc(u.id)}">Betaling</button>
+        <span class="menu-wrap"><button class="btn small" type="button" data-uact="menu" data-uid="${esc(u.id)}" aria-haspopup="true">Acties ▾</button></span>
+      </div></td></tr>`).join("") || `<tr><td colspan="6" class="sub">${uq ? "Geen gebruikers gevonden." : "Nog geen gebruikers."}</td></tr>`;
   }
+  function subPill(until) {
+    const t = S.today || new Date().toISOString().slice(0, 10);
+    if (!until) return `<span class="pill off">Geen</span>`;
+    const d = new Date(until + "T12:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" });
+    if (until < t) return `<span class="pill warn">Verlopen ${d}</span>`;
+    const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    return `<span class="pill ${until <= soon ? "warn" : "ok"}">t/m ${d}</span>`;
+  }
+  function closeMenus() { $$(".menu").forEach((m) => m.remove()); }
+  function openUserMenu(btn, u) {
+    closeMenus();
+    const m = document.createElement("div"); m.className = "menu"; m.setAttribute("role", "menu");
+    m.innerHTML = `<button type="button" role="menuitem" data-uact="edit" data-uid="${esc(u.id)}">Gegevens wijzigen</button>
+      <button type="button" role="menuitem" data-uact="code" data-uid="${esc(u.id)}">Nieuwe code instellen</button>
+      <button type="button" role="menuitem" data-uact="role" data-uid="${esc(u.id)}">${u.role === "beheerder" ? "Maak handelaar" : "Maak beheerder"}</button>
+      <button type="button" role="menuitem" data-uact="active" data-uid="${esc(u.id)}">${u.active ? "Deactiveren" : "Activeren"}</button>`;
+    btn.parentElement.appendChild(m);
+    m.querySelector("button").focus();
+  }
+  document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) closeMenus(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
+  $("#users-q").addEventListener("input", renderUsers);
+  $("#btn-show-newuser").addEventListener("click", () => { $("#form-user").hidden = false; $("#u-name").focus(); });
+  $("#btn-hide-newuser").addEventListener("click", () => { $("#form-user").hidden = true; });
   let editFor = null;
   const dlgEdit = $("#dlg-edituser");
   $("#form-edituser").addEventListener("submit", async (e) => {
@@ -1298,6 +1483,9 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   $("#view-admin").addEventListener("click", async (e) => {
     const t = e.target.closest("[data-uact]"); if (!t) return;
     const u = users.find((x) => x.id === t.dataset.uid); if (!u) return;
+    if (t.dataset.uact === "menu") { e.stopPropagation(); if (t.parentElement.querySelector(".menu")) closeMenus(); else openUserMenu(t, u); return; }
+    closeMenus();
+    if (t.dataset.uact === "pay") return openPayments(u);
     if (t.dataset.uact === "approve") {
       try { await api("users/" + encodeURIComponent(u.id), { method: "PATCH", body: { active: true } }); await loadUsers(); toast(`${u.name} van ${u.company} kan nu inloggen.`); }
       catch (err) { toast(err.message); }
@@ -1340,6 +1528,261 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
       await loadUsers();
       toast(`${d.user.name} kan nu inloggen.`);
     } catch (err) { $("#user-err").textContent = err.message; }
+  });
+
+  // ---------- beheeromgeving ----------
+  function setPendingBadge(n) {
+    S.pendingCount = n;
+    for (const id of ["#n-pending", "#n-pending2"]) { $(id).hidden = !n; $(id).textContent = n; }
+  }
+  function setAdminPane(p) {
+    S.apane = p;
+    $$("[data-apane]").forEach((b) => (b.dataset.apane === p ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+    $$("#view-admin [data-pane]").forEach((el) => (el.hidden = el.dataset.pane !== p));
+    try { localStorage.setItem("rpb.apane", p); } catch {}
+    refreshAdminPane(true);
+  }
+  function refreshAdminPane(first) {
+    const p = S.apane;
+    if (p === "dash") loadStats();
+    else if (p === "users") loadUsers();
+    else if (p === "lots") renderAdminLots();
+    else if (p === "log" && first) loadLog(true);
+    else if (p === "settings" && first) fillSettings();
+  }
+  $$("[data-apane]").forEach((b) => b.addEventListener("click", () => setAdminPane(b.dataset.apane)));
+  $$("[data-goto-pane]").forEach((b) => b.addEventListener("click", () => setAdminPane(b.dataset.gotoPane)));
+
+  const KIND = { inloggen: "Inloggen", account: "Aanvraag", partij: "Partij", bod: "Bod", gunning: "Gunning", betaling: "Betaling", beheer: "Beheer" };
+  const fmtTime = (iso) => new Date(iso).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const fmtDate = (d) => (d ? new Date(d + "T12:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" }) : "");
+
+  async function loadStats() {
+    try {
+      const s = await api("admin/stats");
+      S.today = s.today;
+      $("#t-rev").textContent = euro.format(s.revenueTotal);
+      $("#t-rev-sub").textContent = `${euro.format(s.revenueYear)} in ${s.today.slice(0, 4)}`;
+      $("#t-cust").textContent = num.format(s.customers);
+      $("#t-cust-sub").textContent = `handelaren${s.admins ? ` · ${s.admins} beheerder${s.admins === 1 ? "" : "s"}` : ""}${s.pending ? ` · ${s.pending} aanvra${s.pending === 1 ? "ag" : "gen"}` : ""}`;
+      $("#t-paid").textContent = num.format(s.paidCustomers);
+      $("#t-paid-sub").textContent = s.customers ? `${Math.round((s.paidCustomers / s.customers) * 100)}% van de handelaren` : "met geldig abonnement";
+      $("#t-lots").textContent = num.format(s.lotsOpen);
+      $("#t-lots-sub").textContent = `open · ${num.format(s.lotsTotal)} totaal · ${num.format(s.awards)} gunning${s.awards === 1 ? "" : "en"}`;
+      $("#dash-asof").textContent = "Bijgewerkt " + new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+      $("#dash-attention").innerHTML = s.attention.length ? `<ul class="mini-list">${s.attention.map((a) => `<li><span><b>${esc(a.company || a.name)}</b> <span class="sub">${esc(a.company ? a.name : "")}</span></span>
+        <span class="actions" style="flex-wrap:nowrap"><span class="pill ${a.expired ? "warn" : "acc"}">${a.expired ? "Verlopen" : "Verloopt"} ${fmtDate(a.paidUntil)}</span><button class="btn small" type="button" data-dash-pay="${esc(a.id)}">Betaling</button></span></li>`).join("")}</ul>`
+        : `<div class="nobids">Geen abonnementen die verlopen of binnenkort verlopen.</div>`;
+      const lg = await api("admin/log?limit=8");
+      $("#dash-log").innerHTML = lg.entries.length ? `<ul class="mini-list">${lg.entries.map((x) => `<li><span>${esc(x.detail)}<div class="sub">${esc(x.user || "—")}</div></span><span class="sub">${fmtTime(x.at)}</span></li>`).join("")}</ul>` : `<div class="nobids">Nog geen activiteit.</div>`;
+    } catch (err) { $("#dash-attention").innerHTML = `<div class="nobids">${esc(err.message)}</div>`; }
+  }
+  $("#dash-attention").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-dash-pay]"); if (!b) return;
+    if (!users.length) { try { const d = await api("users"); users = d.users; } catch {} }
+    const u = users.find((x) => x.id === b.dataset.dashPay); if (u) openPayments(u);
+  });
+
+  // Betalingen
+  const dlgPay = $("#dlg-pay");
+  let payFor = null;
+  async function openPayments(u) {
+    payFor = u;
+    $("#pay-sub").textContent = `${u.name}${u.company ? " · " + u.company : ""}${u.kvk ? " · KvK " + u.kvk : ""}`;
+    const t = S.today || new Date().toISOString().slice(0, 10);
+    const start = u.paidUntil && u.paidUntil >= t ? addDays(u.paidUntil, 1) : t;
+    $("#p-amount").value = ((S.settings?.subscriptionPrice || 0) / 100).toFixed(2);
+    $("#p-paid").value = t; $("#p-until").value = addYearMinusDay(start); $("#p-note").value = ""; $("#pay-err").textContent = "";
+    $("#pay-body").innerHTML = `<tr><td colspan="5" class="sub">Laden…</td></tr>`;
+    dlgPay.showModal();
+    loadPayments();
+  }
+  function addDays(d, n) { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
+  function addYearMinusDay(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCFullYear(x.getUTCFullYear() + 1); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); }
+  $("#p-paid").addEventListener("change", () => { const v = $("#p-paid").value; if (v) $("#p-until").value = addYearMinusDay(v); });
+  async function loadPayments() {
+    try {
+      const d = await api("admin/payments?user=" + encodeURIComponent(payFor.id));
+      $("#pay-body").innerHTML = d.payments.map((p) => `<tr><td>${fmtDate(p.paidOn)}</td><td class="num">${euro.format(p.amount)}</td><td>${fmtDate(p.validUntil)}</td><td>${esc(p.note) || '<span class="sub">—</span>'}</td>
+        <td class="num"><button class="btn small ghost" type="button" data-delpay="${esc(p.id)}">Verwijderen</button></td></tr>`).join("") || `<tr><td colspan="5" class="sub">Nog geen betalingen geregistreerd.</td></tr>`;
+    } catch (err) { $("#pay-body").innerHTML = `<tr><td colspan="5" class="sub">${esc(err.message)}</td></tr>`; }
+  }
+  $("#pay-body").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-delpay]"); if (!b) return;
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Zeker?"; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Verwijderen"; } }, 4000); return; }
+    try { await api("admin/payments/" + encodeURIComponent(b.dataset.delpay), { method: "DELETE" }); await loadPayments(); toast("Betaling verwijderd."); }
+    catch (err) { toast(err.message); }
+  });
+  $("#form-pay").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const amount = $("#p-amount").value, paidOn = $("#p-paid").value, validUntil = $("#p-until").value;
+    if (!(Number(amount) >= 0) || amount === "") { $("#pay-err").textContent = "Vul een bedrag in."; return; }
+    if (!paidOn || !validUntil) { $("#pay-err").textContent = "Vul beide datums in."; return; }
+    try {
+      await api("admin/payments", { method: "POST", body: { userId: payFor.id, amount, paidOn, validUntil, note: $("#p-note").value.trim() } });
+      $("#pay-err").textContent = ""; $("#p-note").value = "";
+      await loadPayments();
+      toast(`Betaling van ${euro.format(Number(amount))} geregistreerd voor ${payFor.name}.`);
+      refreshAdminPane();
+    } catch (err) { $("#pay-err").textContent = err.message; }
+  });
+  dlgPay.addEventListener("close", () => refreshAdminPane());
+
+  // Restpartijen (alle aanbieders)
+  let alotsFilter = "open";
+  $("#alots-filter").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-f]"); if (!c) return;
+    alotsFilter = c.dataset.f;
+    $$("#alots-filter .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === c)));
+    renderAdminLots();
+  });
+  function renderAdminLots() {
+    let lots = allLots();
+    if (alotsFilter === "open") lots = lots.filter((l) => !lotState(l).closed);
+    if (alotsFilter === "closed") lots = lots.filter((l) => lotState(l).closed);
+    lots.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    $("#alots-body").innerHTML = lots.map((l) => {
+      const st = lotState(l), bids = bidsFor(l.id), rem = l.remaining ?? l.qty;
+      return `<tr>
+        <td>${validPhotos(l).length ? `<img class="panel-thumb" style="width:40px;height:40px;vertical-align:middle;margin-right:8px" src="${photoUrl(validPhotos(l)[0])}" alt="" loading="lazy">` : ""}<b>${esc(l.product)}</b>${l.ras ? ` <span class="sub">${esc(l.ras)}</span>` : ""}<div class="sub">${esc(l.category)} · ${esc(l.klasse)}</div></td>
+        <td>${esc(l.company) || "—"}</td>
+        <td class="num">${num.format(rem)} / ${num.format(l.qty)} ${esc(l.unit)}</td>
+        <td class="num">${euro.format(l.price)}</td>
+        <td class="num">${bids.length}${bids[0] ? `<div class="sub">hoogste ${euro.format(bids[0].price)}</div>` : ""}</td>
+        <td>${fmtDate(l.until)}</td>
+        <td><span class="pill ${st.cls}">${st.label}</span></td>
+        <td class="num"><div class="actions" style="justify-content:flex-end;flex-wrap:nowrap">
+          ${l.status === "ingetrokken" ? `<button class="btn small" type="button" data-alot="reopen" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">Heropenen</button>`
+            : `<button class="btn small" type="button" data-alot="withdraw" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">Intrekken</button>`}
+          <button class="btn small ghost" type="button" data-alot="delete" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">Verwijderen</button>
+        </div></td></tr>`;
+    }).join("") || `<tr><td colspan="8" class="sub">Geen partijen${alotsFilter === "open" ? " open" : alotsFilter === "closed" ? " afgesloten" : ""}.</td></tr>`;
+  }
+  $("#alots-body").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-alot]"); if (!b) return;
+    if (b.dataset.alot === "delete" && b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Zeker verwijderen?"; b.classList.add("primary"); setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Verwijderen"; b.classList.remove("primary"); } }, 4000); return; }
+    try {
+      await api("admin/lots", { method: "POST", body: { sellerId: b.dataset.seller, lotId: b.dataset.lot, action: b.dataset.alot } });
+      S.lastNow = ""; await pull(); renderAdminLots();
+      toast({ withdraw: "Partij ingetrokken.", reopen: "Partij heropend.", delete: "Partij verwijderd." }[b.dataset.alot]);
+    } catch (err) { toast(err.message); }
+  });
+
+  // Logboek
+  let logOldest = 0;
+  async function loadLog(reset) {
+    if (reset) { logOldest = 0; $("#log-body").innerHTML = `<tr><td colspan="4" class="sub">Laden…</td></tr>`; }
+    const kind = $("#log-kind").value;
+    try {
+      const d = await api(`admin/log?limit=100${logOldest ? "&before=" + logOldest : ""}${kind ? "&kind=" + encodeURIComponent(kind) : ""}`);
+      const rows = d.entries.map((x) => `<tr><td class="sub" style="white-space:nowrap">${fmtTime(x.at)}</td><td>${esc(x.user || "—")}</td><td><span class="pill ${x.kind === "gunning" || x.kind === "betaling" ? "ok" : x.kind === "beheer" ? "acc" : "off"}">${esc(KIND[x.kind] || x.kind)}</span></td><td>${esc(x.detail)}</td></tr>`).join("");
+      if (reset) $("#log-body").innerHTML = rows || `<tr><td colspan="4" class="sub">Nog niets gelogd.</td></tr>`;
+      else $("#log-body").insertAdjacentHTML("beforeend", rows);
+      if (d.entries.length) logOldest = d.entries[d.entries.length - 1].id;
+      $("#log-more").hidden = d.entries.length < 100;
+    } catch (err) { $("#log-body").innerHTML = `<tr><td colspan="4" class="sub">${esc(err.message)}</td></tr>`; }
+  }
+  $("#log-kind").addEventListener("change", () => loadLog(true));
+  $("#log-more").addEventListener("click", () => loadLog(false));
+
+  // Website-instellingen
+  function applySettings(s) {
+    if (!s) return;
+    S.settings = s;
+    $("#site-name").textContent = s.siteName;
+    document.title = s.siteName;
+    $("#welcome-text").textContent = s.welcomeText || ""; $("#welcome-text").hidden = !s.welcomeText;
+    $("#login-alt").hidden = !s.registrationOpen;
+    $("#reg-subtext").textContent = s.subscriptionText || ""; $("#reg-subtext").hidden = !s.subscriptionText;
+    $("#announce").textContent = s.announcement || ""; $("#announce").hidden = !(s.announcement && S.token);
+  }
+  async function loadSettings() { try { applySettings((await api("status")).settings); } catch {} }
+  // ---------- abonnement betalen (Mollie) ----------
+  async function loadMySub() {
+    if (!S.token) return;
+    try { S.sub = await api("pay/me"); } catch { S.sub = null; }
+    renderSub();
+  }
+  function subState() {
+    const s = S.sub; if (!s) return null;
+    const soon = new Date(Date.parse(s.today) + 30 * 86400000).toISOString().slice(0, 10);
+    if (!s.paidUntil) return { key: "none", title: "Geen abonnement.", text: "" };
+    if (s.paidUntil < s.today) return { key: "expired", title: "Je abonnement is verlopen.", text: `Het liep tot ${fmtDate(s.paidUntil)}.` };
+    if (s.paidUntil <= soon) return { key: "soon", title: "Je abonnement verloopt binnenkort.", text: `Geldig t/m ${fmtDate(s.paidUntil)}.` };
+    return { key: "ok", title: "Abonnement actief.", text: `Geldig t/m ${fmtDate(s.paidUntil)}.` };
+  }
+  function renderSub() {
+    const s = S.sub, st = subState();
+    const show = !!(s && st && s.priceExcl > 0 && S.user?.role === "handelaar" && st.key !== "ok");
+    $("#subbar").hidden = !show || document.body.classList.contains("locked");
+    const payLabel = s ? `${st && st.key === "soon" ? "Verlengen" : "Nu betalen"} · ${euro.format(s.priceIncl)} incl. btw` : "";
+    if (show) {
+      $("#subbar-title").textContent = st.title;
+      $("#subbar-text").textContent = st.text + (s.onlinePayment ? ` Een jaar kost ${euro.format(s.priceExcl)} excl. btw.` : " Neem contact op met de beheerder om te betalen.");
+      $("#subbar-pay").hidden = !s.onlinePayment; $("#subbar-pay").textContent = payLabel;
+    }
+    const showAcc = !!(s && st && s.priceExcl > 0);
+    $("#acc-sub-title").hidden = $("#acc-sub").hidden = !showAcc;
+    if (showAcc) {
+      $("#acc-sub-text").textContent = `${st.title} ${st.text}`.trim();
+      $("#acc-sub-pay").hidden = !s.onlinePayment;
+      $("#acc-sub-pay").textContent = st.key === "ok" ? `Jaar vooruit betalen · ${euro.format(s.priceIncl)}` : payLabel;
+    }
+  }
+  async function startPayment(btn) {
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = "Betaalpagina openen…"; }
+    try {
+      const d = await api("pay/subscription", { method: "POST" });
+      try { sessionStorage.setItem("rpb.payref", d.ref); } catch {}
+      location.href = d.checkoutUrl;
+    } catch (err) {
+      toast(err.message);
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
+    }
+  }
+  $("#subbar-pay").addEventListener("click", (e) => startPayment(e.currentTarget));
+  $("#acc-sub-pay").addEventListener("click", (e) => startPayment(e.currentTarget));
+
+  // Terug van de betaalpagina: /?betaling=<ref>
+  async function handlePaymentReturn() {
+    const params = new URLSearchParams(location.search);
+    const ref = params.get("betaling");
+    if (!ref || !S.token) return;
+    history.replaceState(null, "", location.pathname);
+    toast("Betaling controleren…");
+    for (let i = 0; i < 10; i++) {
+      try {
+        const st = await api("pay/status?ref=" + encodeURIComponent(ref));
+        if (st.status === "paid") { toast(`Betaling gelukt. Je abonnement is geldig t/m ${fmtDate(st.validUntil)}.`); break; }
+        if (["canceled", "expired", "failed"].includes(st.status)) { toast(st.status === "canceled" ? "Betaling geannuleerd. Er is niets afgeschreven." : "De betaling is niet gelukt. Probeer het opnieuw."); break; }
+      } catch (err) { toast(err.message); break; }
+      if (i === 9) toast("De betaling wordt nog verwerkt. Je ziet het resultaat over een paar minuten bij Mijn account.");
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    loadMySub();
+  }
+
+  function fillSettings() {
+    const s = S.settings || {};
+    $("#st-vat").value = s.vatPercent ?? 21;
+    $$("input[name=st-pm]").forEach((c) => (c.checked = (s.payMethods || []).includes(c.value)));
+    $("#st-mollie").innerHTML = s.onlinePayment
+      ? `<span class="pill ${s.paymentTestMode ? "warn" : "ok"}">${s.paymentTestMode ? "Testmodus" : "Live"}</span> Mollie is gekoppeld. ${s.paymentTestMode ? "Betalingen zijn testbetalingen; er wordt geen geld overgemaakt." : "Handelaren kunnen hun abonnement online betalen."}`
+      : `<span class="pill off">Niet gekoppeld</span> Zet je Mollie API-sleutel in Netlify als <code>MOLLIE_API_KEY</code> en doe een nieuwe deploy.`;
+    $("#st-name").value = s.siteName || ""; $("#st-welcome").value = s.welcomeText || ""; $("#st-ann").value = s.announcement || "";
+    $("#st-reg").checked = s.registrationOpen !== false; $("#st-price").value = ((s.subscriptionPrice || 0) / 100).toFixed(2); $("#st-subtext").value = s.subscriptionText || "";
+    $("#st-err").textContent = "";
+  }
+  $("#form-settings").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const d = await api("admin/settings", { method: "PUT", body: {
+        siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
+        registrationOpen: $("#st-reg").checked, subscriptionPrice: $("#st-price").value || "0", subscriptionText: $("#st-subtext").value,
+        vatPercent: $("#st-vat").value || "0", payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
+      } });
+      applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");
+    } catch (err) { $("#st-err").textContent = err.message; }
   });
 
   // ---------- boot ----------
