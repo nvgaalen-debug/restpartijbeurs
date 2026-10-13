@@ -27,7 +27,7 @@ export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
 function getPool() {
   if (pool) return pool;
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL || process.env.DATABASE_KEY;
   if (!url) throw httpError(500, "DATABASE_URL ontbreekt in Netlify.");
   let ssl;
   if (process.env.PG_SSL_CA) ssl = { ca: process.env.PG_SSL_CA, rejectUnauthorized: true };
