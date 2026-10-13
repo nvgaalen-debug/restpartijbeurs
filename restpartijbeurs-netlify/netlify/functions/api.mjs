@@ -3,7 +3,7 @@
 // wijziging wie er ingelogd is. De browser praat nooit zelf met de database.
 //
 // Omgevingsvariabelen (Netlify → Site configuration → Environment variables):
-//   DATABASE_KEY     Service URI van Aiven (postgres://...)          verplicht
+//   DATABASE_URL     Service URI van Aiven (postgres://...)          verplicht
 //   RPB_SETUP_CODE   Code om de eerste beheerder aan te maken         verplicht bij eerste start
 //   PG_SSL_CA        CA-certificaat van Aiven (aanbevolen)
 //   PG_SSL_INSECURE  "true" = certificaat niet controleren (verbinding blijft versleuteld)
@@ -15,6 +15,9 @@ export const config = { path: "/api/*" };
 
 const COLLECTIONS = new Set(["lots", "bids"]);
 const MAX_DOC_BYTES = 256 * 1024;
+const MAX_FULL_BYTES = 450 * 1024;   // grote foto, na verkleinen in de browser
+const MAX_THUMB_BYTES = 60 * 1024;   // miniatuur
+const MAX_PHOTOS_PER_USER = 300;
 const SESSION_DAYS = 30;
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 2;
@@ -72,6 +75,14 @@ async function ensureSchema() {
         updated_at TIMESTAMPTZ NOT NULL,
         updated_by TEXT NOT NULL,
         PRIMARY KEY (collection, id)
+      )`);
+      await q(`CREATE TABLE IF NOT EXISTS rpb_photos (
+        id TEXT PRIMARY KEY,
+        owner TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        thumb TEXT NOT NULL,
+        full_img TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
       )`);
     })().catch((e) => { schemaReady = null; throw e; });
   }
@@ -223,8 +234,57 @@ async function route(req) {
     return json(200, { token, user: publicUser(u) });
   }
 
+  // Foto tonen: /api/photo/<id>?s=t (miniatuur) of ?s=f (groot).
+  // Zonder login, zodat <img> hem kan laden; de id is willekeurig en niet te raden.
+  if (a === "photo" && b && !c && method === "GET") {
+    if (!/^p[a-f0-9]{18}$/.test(b)) throw httpError(404, "Foto niet gevonden.");
+    const full = url.searchParams.get("s") === "f";
+    const r = await q(`SELECT mime, ${full ? "full_img" : "thumb"} AS img FROM rpb_photos WHERE id = $1`, [b]);
+    const row = r.rows[0];
+    if (!row) throw httpError(404, "Foto niet gevonden.");
+    return new Response(Buffer.from(row.img, "base64"), {
+      status: 200,
+      headers: {
+        "content-type": row.mime,
+        "cache-control": "public, max-age=31536000, immutable",
+        "netlify-cdn-cache-control": "public, max-age=31536000, immutable, durable",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
+
   // Vanaf hier: ingelogd
   const me = await auth(req);
+
+  // Foto opslaan: { thumb: "data:image/jpeg;base64,...", full: "data:image/jpeg;base64,..." }
+  if (a === "photos" && !b && method === "POST") {
+    const body = await readBody(req);
+    const parse = (s, max, label) => {
+      const m = typeof s === "string" && s.match(/^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+      if (!m) throw httpError(400, "Alleen JPEG- of WebP-foto's zijn toegestaan.");
+      const bytes = Buffer.byteLength(m[2], "base64");
+      if (bytes > max) throw httpError(413, `De ${label} is te groot.`);
+      return { mime: m[1], b64: m[2] };
+    };
+    const full = parse(body.full, MAX_FULL_BYTES, "foto");
+    const thumb = parse(body.thumb, MAX_THUMB_BYTES, "miniatuur");
+    const n = await q("SELECT COUNT(*)::int AS n FROM rpb_photos WHERE owner = $1", [me.id]);
+    if (Number(n.rows[0].n) >= MAX_PHOTOS_PER_USER) throw httpError(409, "Je hebt het maximale aantal foto's bereikt. Verwijder foto's van oude partijen.");
+    const id = "p" + crypto.randomBytes(9).toString("hex");
+    await q("INSERT INTO rpb_photos (id, owner, mime, thumb, full_img, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [id, me.id, full.mime, thumb.b64, full.b64, new Date()]);
+    return json(200, { id });
+  }
+
+  // Foto verwijderen: eigen foto, of elke foto als beheerder
+  if (a === "photos" && b && method === "DELETE") {
+    const r = await q("SELECT owner FROM rpb_photos WHERE id = $1", [b]);
+    const row = r.rows[0];
+    if (!row) return json(200, { ok: true });
+    if (row.owner !== me.id && me.role !== "beheerder") throw httpError(403, "Dit is niet jouw foto.");
+    await q("DELETE FROM rpb_photos WHERE id = $1", [b]);
+    return json(200, { ok: true });
+  }
 
   if (a === "logout" && method === "POST") {
     const token = (req.headers.get("authorization") || "").slice(7);
