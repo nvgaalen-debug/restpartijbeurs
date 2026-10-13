@@ -210,6 +210,14 @@ dialog::backdrop { background: rgba(10, 20, 15, .45); }
 body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new { display: none !important; }
 .login { max-width: 420px; margin: 8vh auto 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
 .login .form { grid-template-columns: 1fr; }
+.login.wide { max-width: 600px; margin-top: 4vh; }
+.login.wide .form { grid-template-columns: 1fr 1fr; }
+@media (max-width: 480px) { .login.wide .form { grid-template-columns: 1fr; } }
+.login-alt { border-top: 1px solid var(--line); padding: 12px 18px 16px; color: var(--muted); font-size: 14px; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.pending-panel { margin-bottom: 16px; border-color: var(--warn); }
+.tab .n.alert { background: var(--warn-soft); color: var(--warn); }
 .login .dlg-foot { justify-content: flex-end; }
 .right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .user { display: flex; align-items: center; gap: 4px; font-size: 14px; }
@@ -241,7 +249,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
       <button class="tab" role="tab" id="tab-market" data-view="market" aria-selected="true">Aanbod <span class="n" id="n-market">0</span></button>
       <button class="tab" role="tab" id="tab-mine" data-view="mine" aria-selected="false">Mijn partijen <span class="n" id="n-mine">0</span></button>
       <button class="tab" role="tab" id="tab-bids" data-view="bids" aria-selected="false">Mijn biedingen <span class="n" id="n-bids">0</span></button>
-      <button class="tab" role="tab" id="tab-admin" data-view="admin" aria-selected="false" hidden>Beheer</button>
+      <button class="tab" role="tab" id="tab-admin" data-view="admin" aria-selected="false" hidden>Beheer <span class="n alert" id="n-pending" hidden>0</span></button>
     </nav>
   </div>
 </header>
@@ -251,13 +259,37 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
 
   <section id="view-login" hidden>
     <form class="login" id="form-login" novalidate>
-      <div class="dlg-head"><h2>Inloggen</h2><p>Log in met je naam en code. Geen account? Vraag de beheerder.</p></div>
+      <div class="dlg-head"><h2>Inloggen</h2><p>Log in met je naam en code.</p></div>
       <div class="form">
         <div class="field"><label for="l-name">Naam</label><input id="l-name" autocomplete="username" required></div>
         <div class="field"><label for="l-code">Code</label><input id="l-code" type="password" autocomplete="current-password" required></div>
       </div>
       <div class="dlg-foot"><span class="err" id="login-err"></span><button class="btn primary" type="submit">Inloggen</button></div>
+      <div class="login-alt">Nog geen account? <button class="linkbtn" type="button" id="btn-to-register">Account aanvragen</button></div>
     </form>
+    <form class="login wide" id="form-register" novalidate hidden>
+      <div class="dlg-head"><h2>Account aanvragen</h2><p>Voor bedrijven die handelen in aardappelen, groente en fruit. De beheerder controleert je aanvraag; daarna kun je inloggen.</p></div>
+      <div class="form">
+        <div class="fieldset-title">Bedrijf</div>
+        <div class="field"><label for="r-company">Bedrijfsnaam *</label><input id="r-company" autocomplete="organization" required></div>
+        <div class="field"><label for="r-kvk">KvK-nummer *</label><input id="r-kvk" inputmode="numeric" maxlength="10" placeholder="8 cijfers" required></div>
+        <div class="field"><label for="r-phone">Telefoon</label><input id="r-phone" type="tel" autocomplete="tel" placeholder="06 1234 5678"></div>
+        <div class="field"><label for="r-email">E-mail</label><input id="r-email" type="email" autocomplete="email" placeholder="verkoop@bedrijf.nl"></div>
+        <div class="field full"><span class="hint">Vul minstens een telefoonnummer of e-mailadres in. Andere handelaren zien deze gegevens bij je partijen en biedingen.</span></div>
+        <div class="field full"><label for="r-note">Wat handel je? (optioneel)</label><textarea id="r-note" rows="2" placeholder="bijv. groothandel in fruit, verwerker van aardappelen"></textarea></div>
+        <div class="fieldset-title">Inloggegevens</div>
+        <div class="field full"><label for="r-name">Jouw naam *</label><input id="r-name" autocomplete="username" required><span class="hint">Hiermee log je in.</span></div>
+        <div class="field"><label for="r-code">Kies een code * (minstens 4 tekens)</label><input id="r-code" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="r-code2">Herhaal de code *</label><input id="r-code2" type="password" autocomplete="new-password" required></div>
+        <div class="hp" aria-hidden="true"><label for="r-website">Website</label><input id="r-website" tabindex="-1" autocomplete="off"></div>
+      </div>
+      <div class="dlg-foot"><span class="err" id="reg-err"></span>
+        <div class="actions"><button class="btn" type="button" id="btn-to-login">Terug naar inloggen</button><button class="btn primary" type="submit">Aanvraag versturen</button></div></div>
+    </form>
+    <div class="login" id="reg-done" hidden>
+      <div class="dlg-head"><h2>Aanvraag ontvangen</h2><p id="reg-done-text"></p></div>
+      <div class="dlg-foot"><span></span><button class="btn primary" type="button" id="btn-done-login">Naar inloggen</button></div>
+    </div>
     <form class="login" id="form-setup" novalidate hidden>
       <div class="dlg-head"><h2>Eerste beheerder</h2><p>Er zijn nog geen gebruikers. Maak het beheerdersaccount aan met de installatiecode uit Netlify (<code>RPB_SETUP_CODE</code>).</p></div>
       <div class="form">
@@ -304,6 +336,10 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   </section>
 
   <section id="view-admin" hidden>
+    <div class="panel pending-panel" id="pending-panel" hidden>
+      <div class="panel-head"><div><h3>Aanvragen <span class="pill warn" id="pending-n"></span></h3><div class="meta">Controleer het bedrijf, bijvoorbeeld via het KvK-nummer, voor je een aanvraag goedkeurt.</div></div></div>
+      <div class="tablewrap"><table class="bids"><thead><tr><th>Naam</th><th>Bedrijf</th><th>KvK</th><th>Contact</th><th>Aangevraagd</th><th></th></tr></thead><tbody id="pending-body"></tbody></table></div>
+    </div>
     <div class="admin-grid">
       <div class="panel">
         <div class="panel-head"><div><h3>Gebruikers</h3><div class="meta">Handelaren kunnen aanbieden, bieden en gunnen. Beheerders beheren ook de gebruikers.</div></div></div>
@@ -418,6 +454,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     <div class="form" style="grid-template-columns:1fr">
       <div class="field"><label for="eu-name">Naam (om mee in te loggen)</label><input id="eu-name" required></div>
       <div class="field"><label for="eu-company">Bedrijfsnaam</label><input id="eu-company"></div>
+      <div class="field"><label for="eu-kvk">KvK-nummer</label><input id="eu-kvk" inputmode="numeric" maxlength="10"></div>
       <div class="field"><label for="eu-contact">Telefoon en/of e-mail</label><input id="eu-contact" placeholder="bijv. 06 1234 5678 / verkoop@bedrijf.nl"><span class="hint">Zichtbaar voor alle handelaren, en gebruikt door de knop Contact.</span></div>
     </div>
     <div class="dlg-foot"><span class="err" id="eu-err"></span>
@@ -549,6 +586,12 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
         if (doc.data === null) map.delete(doc.id); else map.set(doc.id, doc.data);
       }
       if (d.profiles) S.profiles = d.profiles;
+      if (typeof d.pendingCount === "number") {
+        const changed = d.pendingCount !== S.pendingCount;
+        S.pendingCount = d.pendingCount;
+        $("#n-pending").hidden = !d.pendingCount; $("#n-pending").textContent = d.pendingCount;
+        if (changed && S.view === "admin") loadUsers();
+      }
       S.lastNow = d.now; S.ready = true;
       if (S.offline) { S.offline = false; }
       render();
@@ -1104,9 +1147,42 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     }
     $("#form-setup").hidden = !needsSetup;
     $("#form-login").hidden = needsSetup;
+    $("#form-register").hidden = true; $("#reg-done").hidden = true;
     if (!needsSetup) { $("#login-err").textContent = msg || $("#login-err").textContent || ""; $("#l-name").focus(); }
     else $("#s-setup").focus();
   }
+
+  // ---------- account aanvragen ----------
+  function showLoginForm() { $("#form-register").hidden = true; $("#reg-done").hidden = true; $("#form-login").hidden = false; $("#l-name").focus(); }
+  $("#btn-to-register").addEventListener("click", () => {
+    $("#form-login").hidden = true; $("#form-register").hidden = false; $("#reg-err").textContent = ""; $("#r-company").focus();
+  });
+  $("#btn-to-login").addEventListener("click", showLoginForm);
+  $("#btn-done-login").addEventListener("click", showLoginForm);
+  $("#form-register").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = (id) => $(id).value.trim();
+    const kvk = val("#r-kvk").replace(/[\s.]/g, "");
+    const err = !val("#r-company") ? "Vul je bedrijfsnaam in."
+      : !/^\d{8}$/.test(kvk) ? "Vul een KvK-nummer van 8 cijfers in."
+      : !val("#r-phone") && !val("#r-email") ? "Vul een telefoonnummer of e-mailadres in."
+      : !val("#r-name") ? "Vul je naam in."
+      : $("#r-code").value.length < 4 ? "Kies een code van minstens 4 tekens."
+      : $("#r-code").value !== $("#r-code2").value ? "De twee codes zijn niet gelijk." : "";
+    if (err) { $("#reg-err").textContent = err; return; }
+    const btn = e.submitter; if (btn) btn.disabled = true;
+    try {
+      await api("register", { method: "POST", body: {
+        company: val("#r-company"), kvk, phone: val("#r-phone"), email: val("#r-email"), note: val("#r-note"),
+        name: val("#r-name"), code: $("#r-code").value, website: $("#r-website").value,
+      } });
+      $("#reg-done-text").textContent = `Bedankt, ${val("#r-name")}. De beheerder bekijkt je aanvraag voor ${val("#r-company")}. Zodra die is goedgekeurd, log je in met de naam "${val("#r-name")}" en de code die je net hebt gekozen.`;
+      $("#l-name").value = val("#r-name");
+      ["#r-company", "#r-kvk", "#r-phone", "#r-email", "#r-note", "#r-name", "#r-code", "#r-code2"].forEach((id) => ($(id).value = ""));
+      $("#form-register").hidden = true; $("#reg-done").hidden = false;
+    } catch (ex) { $("#reg-err").textContent = ex.message; }
+    finally { if (btn) btn.disabled = false; }
+  });
   function enterApp(user) {
     S.user = user; S.me = user.id; S.canWrite = true;
     document.body.classList.remove("locked");
@@ -1177,9 +1253,23 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
     catch (err) { $("#users-body").innerHTML = `<tr><td colspan="5" class="sub">${esc(err.message)}</td></tr>`; }
   }
   function renderUsers() {
-    $("#users-body").innerHTML = users.map((u) => `<tr>
+    const pend = users.filter((u) => u.pending);
+    $("#pending-panel").hidden = !pend.length;
+    $("#pending-n").textContent = pend.length === 1 ? "1 open" : `${pend.length} open`;
+    $("#n-pending").hidden = !pend.length; $("#n-pending").textContent = pend.length; S.pendingCount = pend.length;
+    $("#pending-body").innerHTML = pend.map((u) => `<tr>
+      <td><b>${esc(u.name)}</b>${u.note ? `<div class="sub">“${esc(u.note)}”</div>` : ""}</td>
+      <td>${esc(u.company)}</td>
+      <td class="num">${u.kvk ? `<a href="https://www.kvk.nl/zoeken/?source=all&q=${encodeURIComponent(u.kvk)}" target="_blank" rel="noopener">${esc(u.kvk)}</a>` : "—"}</td>
+      <td>${esc(u.contact) || "—"}</td>
+      <td class="sub">${u.createdAt ? new Date(u.createdAt).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</td>
+      <td class="num"><div class="actions" style="justify-content:flex-end">
+        <button class="btn primary small" type="button" data-uact="approve" data-uid="${esc(u.id)}">Goedkeuren</button>
+        <button class="btn small" type="button" data-uact="reject" data-uid="${esc(u.id)}">Afwijzen</button>
+      </div></td></tr>`).join("");
+    $("#users-body").innerHTML = users.filter((u) => !u.pending).map((u) => `<tr>
       <td><b>${esc(u.name)}</b>${u.id === S.me ? ' <span class="sub">(jij)</span>' : ""}${u.contact ? `<div class="sub">${esc(u.contact)}</div>` : ""}</td>
-      <td>${esc(u.company) || '<span class="sub">—</span>'}</td>
+      <td>${esc(u.company) || '<span class="sub">—</span>'}${u.kvk ? `<div class="sub">KvK ${esc(u.kvk)}</div>` : ""}</td>
       <td>${u.role === "beheerder" ? "Beheerder" : "Handelaar"}</td>
       <td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Actief" : "Gedeactiveerd"}</span></td>
       <td class="num"><div class="actions" style="justify-content:flex-end">
@@ -1193,7 +1283,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   const dlgEdit = $("#dlg-edituser");
   $("#form-edituser").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const body = { name: $("#eu-name").value.trim(), company: $("#eu-company").value.trim(), contact: $("#eu-contact").value.trim() };
+    const body = { name: $("#eu-name").value.trim(), company: $("#eu-company").value.trim(), contact: $("#eu-contact").value.trim(), kvk: $("#eu-kvk").value.trim() };
     if (!body.name) { $("#eu-err").textContent = "Vul een naam in."; return; }
     try {
       const d = await api("users/" + encodeURIComponent(editFor.id), { method: "PATCH", body });
@@ -1205,13 +1295,24 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
   });
   let codeFor = null;
   const dlgCode = $("#dlg-code");
-  $("#users-body").addEventListener("click", async (e) => {
+  $("#view-admin").addEventListener("click", async (e) => {
     const t = e.target.closest("[data-uact]"); if (!t) return;
     const u = users.find((x) => x.id === t.dataset.uid); if (!u) return;
+    if (t.dataset.uact === "approve") {
+      try { await api("users/" + encodeURIComponent(u.id), { method: "PATCH", body: { active: true } }); await loadUsers(); toast(`${u.name} van ${u.company} kan nu inloggen.`); }
+      catch (err) { toast(err.message); }
+      return;
+    }
+    if (t.dataset.uact === "reject") {
+      if (t.dataset.sure !== "1") { t.dataset.sure = "1"; t.textContent = "Zeker afwijzen?"; t.classList.add("primary"); setTimeout(() => { if (t.isConnected) { t.dataset.sure = ""; t.textContent = "Afwijzen"; t.classList.remove("primary"); } }, 4000); return; }
+      try { await api("users/" + encodeURIComponent(u.id), { method: "DELETE" }); await loadUsers(); toast(`Aanvraag van ${u.name} afgewezen en verwijderd.`); }
+      catch (err) { toast(err.message); }
+      return;
+    }
     if (t.dataset.uact === "edit") {
       editFor = u;
       $("#eu-sub").textContent = `Wijzig de gegevens van ${u.name}. Nieuwe gegevens verschijnen ook bij bestaande partijen en biedingen waar niets eigens is ingevuld.`;
-      $("#eu-name").value = u.name; $("#eu-company").value = u.company || ""; $("#eu-contact").value = u.contact || "";
+      $("#eu-name").value = u.name; $("#eu-company").value = u.company || ""; $("#eu-contact").value = u.contact || ""; $("#eu-kvk").value = u.kvk || "";
       $("#eu-err").textContent = ""; dlgEdit.showModal(); $("#eu-company").focus(); return;
     }
     if (t.dataset.uact === "code") {
