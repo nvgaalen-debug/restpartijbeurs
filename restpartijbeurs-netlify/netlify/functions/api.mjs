@@ -195,6 +195,7 @@ const SETTING_DEFAULTS = {
   subscriptionText: "",
   vatPercent: "21",
   payMethods: "ideal",             // Mollie-methoden, kommagescheiden; leeg = alles wat in Mollie aan staat
+  autoApprovePaid: "false",        // aanvraag automatisch goedkeuren na online betaling
 };
 const PAY_METHODS = ["ideal", "wero", "bancontact", "creditcard"];
 async function getSettings() {
@@ -210,6 +211,7 @@ async function getSettings() {
     subscriptionText: s.subscriptionText,
     vatPercent: Number.isFinite(Number(s.vatPercent)) ? Number(s.vatPercent) : 21,
     payMethods: String(s.payMethods || "").split(",").map((x) => x.trim()).filter((x) => PAY_METHODS.includes(x)),
+    autoApprovePaid: s.autoApprovePaid === "true",
     onlinePayment: !!process.env.MOLLIE_API_KEY,
     paymentTestMode: String(process.env.MOLLIE_API_KEY || "").startsWith("test_"),
   };
@@ -264,11 +266,46 @@ async function syncMollie(ref) {
       await q(`INSERT INTO rpb_payments (id, user_id, amount_cents, paid_on, valid_until, note, created_by, created_at, mollie_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (mollie_id) WHERE mollie_id IS NOT NULL DO NOTHING`,
         [newId("b"), row.user_id, row.amount_excl, t, validUntil, note, "mollie", new Date(), row.mollie_id]);
-      const ur = await q("SELECT id, name, company FROM rpb_users WHERE id = $1", [row.user_id]);
-      await log(ur.rows[0] || null, "betaling", `Abonnement online betaald via ${label}: ${euro(row.amount_excl / 100)} excl. btw, geldig t/m ${validUntil}`);
+      const ur = await q("SELECT id, name, company, pending FROM rpb_users WHERE id = $1", [row.user_id]);
+      const u = ur.rows[0];
+      await log(u || null, "betaling", `Abonnement online betaald via ${label}: ${euro(row.amount_excl / 100)} excl. btw, geldig t/m ${validUntil}`);
+      if (u?.pending && (await getSettings()).autoApprovePaid) {
+        await q("UPDATE rpb_users SET pending = FALSE, active = TRUE WHERE id = $1 AND pending = TRUE", [u.id]);
+        await log(u, "account", "Aanvraag automatisch goedgekeurd na online betaling");
+      }
     }
   }
-  return { status, validUntil };
+  const ar = await q("SELECT pending, active FROM rpb_users WHERE id = $1", [row.user_id]);
+  return { status, validUntil, approved: !!(ar.rows[0] && !ar.rows[0].pending && ar.rows[0].active) };
+}
+
+// Mollie-betaling aanmaken voor een gebruiker; geeft de betaalpagina terug
+async function createSubscriptionPayment(req, user, returnParam) {
+  const s = await getSettings();
+  if (!s.subscriptionPrice) throw httpError(400, "Er is geen abonnementsprijs ingesteld.");
+  const excl = s.subscriptionPrice;
+  const incl = Math.round(excl * (1 + (s.vatPercent || 0) / 100));
+  const ref = "m" + crypto.randomBytes(12).toString("hex");
+  const base = siteUrl(req);
+  const body = {
+    amount: { currency: "EUR", value: centsToValue(incl) },
+    description: `${s.siteName} abonnement ${user.company || user.name}`.slice(0, 255),
+    redirectUrl: `${base}/?${returnParam}=${ref}`,
+    webhookUrl: `${base}/api/mollie/webhook`,
+    metadata: { ref, userId: user.id },
+    locale: "nl_NL",
+  };
+  if (s.payMethods.length === 1) body.method = s.payMethods[0];
+  else if (s.payMethods.length > 1) body.method = s.payMethods;
+  const now = new Date();
+  await q("INSERT INTO rpb_mollie (ref, user_id, amount_excl, amount_incl, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6)",
+    [ref, user.id, excl, incl, "created", now]);
+  const p = await mollie("/payments", { method: "POST", body });
+  await q("UPDATE rpb_mollie SET mollie_id = $2, status = $3, updated_at = $4 WHERE ref = $1", [ref, p.id, p.status || "open", new Date()]);
+  const checkout = p._links?.checkout?.href;
+  if (!checkout) throw httpError(502, "Mollie gaf geen betaalpagina terug.");
+  await log(user, "betaling", `Online betaling gestart: € ${centsToValue(incl).replace(".", ",")} incl. btw`);
+  return { checkoutUrl: checkout, ref };
 }
 function addDay(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); }
 
@@ -417,7 +454,23 @@ async function route(req) {
     const contact = [phone, email].filter(Boolean).join(" / ");
     const nu = await insertUser({ name: body.name, company, contact, code: body.code, role: "handelaar", pending: true, kvk, email, note: body.note });
     await log(nu, "account", `Account aangevraagd (KvK ${kvk})`);
+    if (body.payNow) {
+      const s = await getSettings();
+      if (s.onlinePayment && s.subscriptionPrice > 0) {
+        try { return json(200, { ok: true, ...(await createSubscriptionPayment(req, nu, "aanvraag")) }); }
+        catch (e) { return json(200, { ok: true, payError: e.message }); } // aanvraag staat er wel; betalen kan later
+      }
+    }
     return json(200, { ok: true });
+  }
+
+  // Status van een betaling bij een aanvraag (nog zonder login; de ref is willekeurig en niet te raden)
+  if (a === "pay" && b === "request-status" && method === "GET") {
+    const ref = str(url.searchParams.get("ref") || "", 40);
+    if (!/^m[a-f0-9]{24}$/.test(ref)) throw httpError(404, "Betaling niet gevonden.");
+    const st = await syncMollie(ref);
+    if (!st) throw httpError(404, "Betaling niet gevonden.");
+    return json(200, st);
   }
 
   // Inloggen
@@ -487,31 +540,7 @@ async function route(req) {
 
   // Abonnement online betalen: maakt een Mollie-betaling en geeft de betaalpagina terug
   if (a === "pay" && b === "subscription" && method === "POST") {
-    const s = await getSettings();
-    if (!s.subscriptionPrice) throw httpError(400, "Er is geen abonnementsprijs ingesteld.");
-    const excl = s.subscriptionPrice;
-    const incl = Math.round(excl * (1 + (s.vatPercent || 0) / 100));
-    const ref = "m" + crypto.randomBytes(12).toString("hex");
-    const base = siteUrl(req);
-    const body = {
-      amount: { currency: "EUR", value: centsToValue(incl) },
-      description: `${s.siteName} abonnement ${me.company || me.name}`.slice(0, 255),
-      redirectUrl: `${base}/?betaling=${ref}`,
-      webhookUrl: `${base}/api/mollie/webhook`,
-      metadata: { ref, userId: me.id },
-      locale: "nl_NL",
-    };
-    if (s.payMethods.length === 1) body.method = s.payMethods[0];
-    else if (s.payMethods.length > 1) body.method = s.payMethods;
-    const now = new Date();
-    await q("INSERT INTO rpb_mollie (ref, user_id, amount_excl, amount_incl, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6)",
-      [ref, me.id, excl, incl, "created", now]);
-    const p = await mollie("/payments", { method: "POST", body });
-    await q("UPDATE rpb_mollie SET mollie_id = $2, status = $3, updated_at = $4 WHERE ref = $1", [ref, p.id, p.status || "open", new Date()]);
-    const checkout = p._links?.checkout?.href;
-    if (!checkout) throw httpError(502, "Mollie gaf geen betaalpagina terug.");
-    await log(me, "betaling", `Online betaling gestart: € ${centsToValue(incl).replace(".", ",")} incl. btw`);
-    return json(200, { checkoutUrl: checkout, ref });
+    return json(200, await createSubscriptionPayment(req, me, "betaling"));
   }
 
   // Status van een eigen online betaling (na terugkeer van Mollie)
@@ -807,6 +836,7 @@ async function route(req) {
         subscriptionText: str(body.subscriptionText, 300),
         vatPercent: String(Math.min(100, Math.max(0, Number(String(body.vatPercent ?? "21").replace(",", ".")) || 0))),
         payMethods: (Array.isArray(body.payMethods) ? body.payMethods : []).filter((x) => PAY_METHODS.includes(x)).join(","),
+        autoApprovePaid: body.autoApprovePaid === true ? "true" : "false",
       };
       for (const [k, v] of Object.entries(vals)) {
         await q("INSERT INTO rpb_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [k, v]);
