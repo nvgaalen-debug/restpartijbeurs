@@ -3,7 +3,7 @@
 // wijziging wie er ingelogd is. De browser praat nooit zelf met de database.
 //
 // Omgevingsvariabelen (Netlify → Site configuration → Environment variables):
-//   DATABASE_URL     Service URI van Aiven (postgres://...)          verplicht
+//   DATABASE_KEY     Service URI van Aiven (postgres://...)          verplicht
 //   RPB_SETUP_CODE   Code om de eerste beheerder aan te maken         verplicht bij eerste start
 //   PG_SSL_CA        CA-certificaat van Aiven (aanbevolen)
 //   PG_SSL_INSECURE  "true" = certificaat niet controleren (verbinding blijft versleuteld)
