@@ -151,6 +151,14 @@ dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-num
 .welcome { color: var(--ink) !important; white-space: pre-line; }
 .subbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r); padding: 10px 14px; margin-bottom: 16px; }
 .subbar span { color: var(--muted); }
+.reason-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.reason-list label { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font-size: 14px; background: var(--bg); }
+.reason-list label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.reason-list input { width: auto; flex: none; }
+.reason-list code { font-size: 12px; color: var(--muted); margin-left: auto; }
+.rc-table input[type=text] { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 6px 8px; }
+.rc-table td { vertical-align: middle; }
+.subbar.blocked { background: var(--warn-soft); border-color: var(--warn); }
 .reg-pay-opts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .field input[type=radio] { width: auto; padding: 0; flex: none; }
 .field input[type=checkbox] { width: auto; padding: 0; flex: none; }
@@ -503,6 +511,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       <button type="button" data-apane="dash" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-3"/></svg>Dashboard</button>
       <button type="button" data-apane="users"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.8a3.3 3.3 0 0 1 0 6.4M18 14.8c1.9.7 3 2.4 3.5 5.2"/></svg>Gebruikers <span class="n alert" id="n-pending2" hidden></span></button>
       <button type="button" data-apane="lots"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/></svg>Restpartijen</button>
+      <button type="button" data-apane="reasons"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>Redencodes</button>
       <button type="button" data-apane="log"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="3" y="14" width="5" height="5" rx="1"/><path d="M11 6h10M11 9h6M11 16h10M11 19h6"/></svg>Logboek</button>
       <button type="button" data-apane="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>Website-instellingen</button>
     </nav>
@@ -564,6 +573,15 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       <div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Partij</th><th>Aanbieder</th><th class="num">Beschikbaar</th><th class="num">Vraagprijs</th><th class="num">Biedingen</th><th>Houdbaar tot</th><th>Status</th><th></th></tr></thead><tbody id="alots-body"></tbody></table></div></div>
     </div>
 
+    <div data-pane="reasons" hidden>
+      <div class="pane-head"><h2>Redencodes</h2><button class="btn small" type="button" id="rc-add">+ Redencode toevoegen</button></div>
+      <p class="sub" style="margin:0">Een handelaar kiest een van deze redenen als hij een advertentie intrekt. Ook jij kiest er een bij intrekken of verwijderen onder Restpartijen. Gebruikte codes kun je beter uitzetten dan verwijderen, zodat de geschiedenis leesbaar blijft.</p>
+      <form class="panel" id="form-reasons" novalidate>
+        <div class="tablewrap"><table class="bids rc-table"><thead><tr><th style="width:120px">Code</th><th>Omschrijving</th><th>Toelichting verplicht</th><th>Actief</th><th class="num">Gebruikt</th><th></th></tr></thead><tbody id="rc-body"></tbody></table></div>
+        <div class="dlg-foot"><span class="err" id="rc-err"></span><button class="btn primary" type="submit">Redencodes opslaan</button></div>
+      </form>
+    </div>
+
     <div data-pane="log" hidden>
       <div class="pane-head"><h2>Logboek</h2>
         <select class="sel" id="log-kind" aria-label="Soort activiteit">
@@ -585,6 +603,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
           <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
           <div class="fieldset-title">Aanmelden en abonnement</div>
           <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
+          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-require"> Geldig abonnement verplicht om aan te bieden en te bieden</label><span class="hint">Na de einddatum kan een handelaar alleen nog kijken, tot hij opnieuw betaalt. Beheerders en vrijgestelde gebruikers kunnen altijd handelen.</span></div>
           <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-auto"> Aanvraag automatisch goedkeuren zodra het abonnement online is betaald</label><span class="hint">Uit: je controleert elke aanvraag zelf, ook als er al betaald is.</span></div>
           <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="number" min="0" step="0.01" inputmode="decimal"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
           <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="number" min="0" max="100" step="0.1" inputmode="decimal"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
@@ -699,17 +718,29 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   </form>
 </dialog>
 
+<dialog id="dlg-reason">
+  <form id="form-reason" novalidate>
+    <div class="dlg-head"><h2 id="rs-title">Partij intrekken</h2><p id="rs-sub"></p></div>
+    <div class="form" style="grid-template-columns:1fr">
+      <div class="field"><span style="font-size:13px;font-weight:600">Reden *</span><div class="reason-list" id="rs-list" role="radiogroup" aria-label="Reden"></div></div>
+      <div class="field"><label for="rs-note" id="rs-note-label">Toelichting (optioneel)</label><textarea id="rs-note" rows="2" maxlength="300"></textarea></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="rs-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit" id="rs-ok">Intrekken</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-pay">
   <div class="dlg-head"><h2>Abonnement</h2><p id="pay-sub"></p></div>
   <div class="form" style="grid-template-columns:1fr">
-    <div class="tablewrap" style="border:1px solid var(--line);border-radius:var(--r)"><table class="bids"><thead><tr><th>Betaald op</th><th class="num">Bedrag</th><th>Geldig t/m</th><th>Notitie</th><th></th></tr></thead><tbody id="pay-body"></tbody></table></div>
+    <div class="tablewrap" style="border:1px solid var(--line);border-radius:var(--r)"><table class="bids"><thead><tr><th>Betaald op</th><th class="num">Bedrag</th><th>Einde abonnement</th><th>Notitie</th><th></th></tr></thead><tbody id="pay-body"></tbody></table></div>
   </div>
   <form id="form-pay" novalidate>
     <div class="form">
       <div class="fieldset-title">Betaling registreren</div>
       <div class="field"><label for="p-amount">Bedrag (€, excl. btw)</label><input id="p-amount" type="number" min="0" step="0.01" inputmode="decimal" required></div>
       <div class="field"><label for="p-paid">Betaald op</label><input id="p-paid" type="date" required></div>
-      <div class="field"><label for="p-until">Abonnement geldig t/m</label><input id="p-until" type="date" required><span class="hint">Standaard een jaar na de betaaldatum.</span></div>
+      <div class="field"><label for="p-until">Einde abonnement</label><input id="p-until" type="date" required><span class="hint">Standaard betaaldatum + 12 maanden, of 12 maanden na de huidige einddatum als het abonnement nog loopt.</span></div>
       <div class="field"><label for="p-note">Notitie</label><input id="p-note" maxlength="200" placeholder="bijv. factuur 2026-014"></div>
     </div>
     <div class="dlg-foot"><span class="err" id="pay-err"></span>
@@ -1032,7 +1063,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       return `<div class="panel">
         <div class="panel-head">
           <div class="panel-title">${validPhotos(l).length ? `<img class="panel-thumb" src="${photoUrl(validPhotos(l)[0])}" alt="" loading="lazy" data-act="photo" data-seller="${esc(S.me)}" data-lot="${esc(l.id)}" data-i="0">` : ""}<div style="min-width:0"><h3>${esc(l.product)}${l.ras ? ` <span style="font-weight:500;color:var(--muted)">${esc(l.ras)}</span>` : ""}</h3>
-            <div class="meta">${num.format(rem)} van ${num.format(l.qty)} ${esc(l.unit)} beschikbaar · vraagprijs ${euro.format(l.price)} · ${soldQty ? `${num.format(soldQty)} gegund · ` : ""}<span class="pill ${st.cls}">${st.label}</span></div></div></div>
+            <div class="meta">${num.format(rem)} van ${num.format(l.qty)} ${esc(l.unit)} beschikbaar · vraagprijs ${euro.format(l.price)} · ${soldQty ? `${num.format(soldQty)} gegund · ` : ""}<span class="pill ${st.cls}">${st.label}</span>${l.status === "ingetrokken" && l.withdrawReason ? ` <span class="sub">Reden: ${esc(reasonText(l.withdrawReason))}${l.withdrawReason.by === "beheer" ? " (door beheer)" : ""}</span>` : ""}</div></div></div>
           <div class="actions">
             ${l.status === "ingetrokken" ? `<button class="btn small" type="button" data-act="reopen" data-lot="${esc(l.id)}">Heropenen</button>`
               : st.key !== "sold" ? `<button class="btn small" type="button" data-act="edit" data-lot="${esc(l.id)}">Bewerken</button><button class="btn small" type="button" data-act="withdraw" data-lot="${esc(l.id)}">Intrekken</button>` : ""}
@@ -1354,8 +1385,18 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     if (act === "goto-market") return setView("market");
     if (act === "edit") return openLotDialog(lotId);
     if (act === "withdraw" || act === "reopen") {
-      const ok = await saveMyLots((doc) => { const it = doc.items[lotId]; if (!it) return; it.status = act === "withdraw" ? "ingetrokken" : ((it.remaining ?? it.qty) > 0 ? "open" : "verkocht"); });
-      if (ok) toast(act === "withdraw" ? "Partij ingetrokken. Kopers zien hem niet meer." : "Partij staat weer in het aanbod.");
+      let reason = null;
+      if (act === "withdraw") {
+        const it0 = myLotsDoc()?.items?.[lotId];
+        reason = await openReason(`${it0?.product || "Partij"} intrekken`, "Kopers zien de partij daarna niet meer. Waarom trek je hem in?");
+        if (!reason) return;
+      }
+      const ok = await saveMyLots((doc) => {
+        const it = doc.items[lotId]; if (!it) return;
+        if (act === "withdraw") { it.status = "ingetrokken"; it.withdrawReason = reason; }
+        else { it.status = (it.remaining ?? it.qty) > 0 ? "open" : "verkocht"; delete it.withdrawReason; }
+      });
+      if (ok) toast(act === "withdraw" ? `Partij ingetrokken (${reason.label}). Kopers zien hem niet meer.` : "Partij staat weer in het aanbod.");
       return;
     }
     if (act === "accept" || act === "reject") {
@@ -1469,7 +1510,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     let v = "market";
     try {
       const s = localStorage.getItem("rpb.view"); if (["mine", "bids"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s;
-      const ap = localStorage.getItem("rpb.apane"); if (["dash", "users", "lots", "log", "settings"].includes(ap)) S.apane = ap;
+      const ap = localStorage.getItem("rpb.apane"); if (["dash", "users", "lots", "reasons", "log", "settings"].includes(ap)) S.apane = ap;
     } catch {}
     setView(v);
     render();
@@ -1555,7 +1596,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       <td><b>${esc(u.name)}</b>${u.id === S.me ? ' <span class="sub">(jij)</span>' : ""}${u.contact ? `<div class="sub">${esc(u.contact)}</div>` : ""}</td>
       <td>${esc(u.company) || '<span class="sub">—</span>'}${u.kvk ? `<div class="sub">KvK ${esc(u.kvk)}</div>` : ""}</td>
       <td>${u.role === "beheerder" ? "Beheerder" : "Handelaar"}</td>
-      <td>${subPill(u.paidUntil)}${u.paidTotal ? `<div class="sub">${euro.format(u.paidTotal)} totaal</div>` : ""}</td>
+      <td>${u.role === "beheerder" ? '<span class="pill acc">Beheerder</span>' : u.exempt ? '<span class="pill acc">Vrijgesteld</span>' : subPill(u.paidUntil)}${u.paidTotal ? `<div class="sub">${euro.format(u.paidTotal)} totaal</div>` : ""}</td>
       <td><span class="pill ${u.active ? "ok" : "off"}">${u.active ? "Actief" : "Gedeactiveerd"}</span></td>
       <td class="num"><div class="actions" style="justify-content:flex-end;flex-wrap:nowrap">
         <button class="btn small" type="button" data-uact="pay" data-uid="${esc(u.id)}">Betaling</button>
@@ -1568,7 +1609,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     const d = new Date(until + "T12:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" });
     if (until < t) return `<span class="pill warn">Verlopen ${d}</span>`;
     const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-    return `<span class="pill ${until <= soon ? "warn" : "ok"}">t/m ${d}</span>`;
+    return `<span class="pill ${until <= soon ? "warn" : "ok"}">Einde ${d}</span>`;
   }
   function closeMenus() { $$(".menu").forEach((m) => m.remove()); }
   function openUserMenu(btn, u) {
@@ -1577,6 +1618,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     m.innerHTML = `<button type="button" role="menuitem" data-uact="edit" data-uid="${esc(u.id)}">Gegevens wijzigen</button>
       <button type="button" role="menuitem" data-uact="code" data-uid="${esc(u.id)}">Nieuwe code instellen</button>
       <button type="button" role="menuitem" data-uact="role" data-uid="${esc(u.id)}">${u.role === "beheerder" ? "Maak handelaar" : "Maak beheerder"}</button>
+      ${u.role !== "beheerder" ? `<button type="button" role="menuitem" data-uact="exempt" data-uid="${esc(u.id)}">${u.exempt ? "Abonnement weer verplicht" : "Geen abonnement nodig"}</button>` : ""}
       <button type="button" role="menuitem" data-uact="active" data-uid="${esc(u.id)}">${u.active ? "Deactiveren" : "Activeren"}</button>`;
     btn.parentElement.appendChild(m);
     m.querySelector("button").focus();
@@ -1629,7 +1671,8 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       codeFor = u; $("#code-sub").textContent = `Voor ${u.name}. Bestaande sessies worden uitgelogd.`;
       $("#c-code").value = ""; $("#code-err").textContent = ""; dlgCode.showModal(); return;
     }
-    const body = t.dataset.uact === "role" ? { role: u.role === "beheerder" ? "handelaar" : "beheerder" } : { active: !u.active };
+    const body = t.dataset.uact === "role" ? { role: u.role === "beheerder" ? "handelaar" : "beheerder" }
+      : t.dataset.uact === "exempt" ? { exempt: !u.exempt } : { active: !u.active };
     try { await api("users/" + encodeURIComponent(u.id), { method: "PATCH", body }); await loadUsers(); toast("Gebruiker bijgewerkt."); }
     catch (err) { toast(err.message); }
   });
@@ -1671,7 +1714,84 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     else if (p === "lots") renderAdminLots();
     else if (p === "log" && first) loadLog(true);
     else if (p === "settings" && first) fillSettings();
+    else if (p === "reasons" && first) { rcDraft = (S.settings?.reasonCodes || []).map((r) => ({ ...r })); renderReasons(); }
   }
+
+  // ---------- redencodes ----------
+  const dlgReason = $("#dlg-reason");
+  let reasonResolve = null;
+  function openReason(title, sub, okLabel) {
+    const codes = (S.settings?.reasonCodes || []).filter((r) => r.active);
+    if (!codes.length) return Promise.resolve({ code: "", label: "Geen reden", note: "" });
+    $("#rs-title").textContent = title; $("#rs-sub").textContent = sub || "";
+    $("#rs-ok").textContent = okLabel || "Intrekken";
+    $("#rs-list").innerHTML = codes.map((r, i) => `<label><input type="radio" name="rs-code" value="${esc(r.code)}"${i === 0 ? "" : ""}> ${esc(r.label)}<code>${esc(r.code)}</code></label>`).join("");
+    $("#rs-note").value = ""; $("#rs-err").textContent = ""; updateReasonNote();
+    dlgReason.showModal();
+    return new Promise((res) => { reasonResolve = res; });
+  }
+  function updateReasonNote() {
+    const code = document.querySelector("input[name=rs-code]:checked")?.value;
+    const rc = (S.settings?.reasonCodes || []).find((r) => r.code === code);
+    $("#rs-note-label").textContent = rc?.needsNote ? "Toelichting *" : "Toelichting (optioneel)";
+  }
+  $("#rs-list").addEventListener("change", () => { updateReasonNote(); $("#rs-err").textContent = ""; });
+  $("#rs-note").addEventListener("input", () => { $("#rs-err").textContent = ""; });
+  $("#form-reason").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const code = document.querySelector("input[name=rs-code]:checked")?.value;
+    const rc = (S.settings?.reasonCodes || []).find((r) => r.code === code);
+    const note = $("#rs-note").value.trim();
+    if (!rc) { $("#rs-err").textContent = "Kies een reden."; return; }
+    if (rc.needsNote && !note) { $("#rs-err").textContent = "Vul een korte toelichting in."; $("#rs-note").focus(); return; }
+    const r = reasonResolve; reasonResolve = null; dlgReason.close();
+    r && r({ code: rc.code, label: rc.label, note });
+  });
+  dlgReason.addEventListener("close", () => { if (reasonResolve) { const r = reasonResolve; reasonResolve = null; r(null); } });
+  const reasonText = (wr) => (wr ? `${wr.label}${wr.note ? ": " + wr.note : ""}` : "");
+
+  let rcDraft = [];
+  function reasonUsage() {
+    const n = {};
+    for (const l of allLots()) if (l.withdrawReason?.code) n[l.withdrawReason.code] = (n[l.withdrawReason.code] || 0) + 1;
+    return n;
+  }
+  function renderReasons() {
+    const use = reasonUsage();
+    $("#rc-body").innerHTML = rcDraft.map((r, i) => `<tr data-i="${i}">
+      <td><input type="text" data-k="code" value="${esc(r.code)}" maxlength="10" aria-label="Code" style="text-transform:uppercase"></td>
+      <td><input type="text" data-k="label" value="${esc(r.label)}" maxlength="80" aria-label="Omschrijving"></td>
+      <td><input type="checkbox" data-k="needsNote"${r.needsNote ? " checked" : ""} aria-label="Toelichting verplicht"></td>
+      <td><input type="checkbox" data-k="active"${r.active ? " checked" : ""} aria-label="Actief"></td>
+      <td class="num">${use[r.code] || 0}</td>
+      <td class="num"><button class="btn small ghost" type="button" data-rc-del="${i}">Verwijderen</button></td></tr>`).join("")
+      || `<tr><td colspan="6" class="sub">Nog geen redencodes. Zonder codes kan een handelaar intrekken zonder reden.</td></tr>`;
+  }
+  $("#rc-body").addEventListener("input", (e) => {
+    const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+    const r = rcDraft[Number(tr.dataset.i)]; const k = e.target.dataset.k;
+    r[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+  });
+  $("#rc-body").addEventListener("change", (e) => { const tr = e.target.closest("tr[data-i]"); if (tr && e.target.type === "checkbox") rcDraft[Number(tr.dataset.i)][e.target.dataset.k] = e.target.checked; });
+  $("#rc-body").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rc-del]"); if (!b) return;
+    const r = rcDraft[Number(b.dataset.rcDel)];
+    if ((reasonUsage()[r.code] || 0) && b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Wordt gebruikt. Toch?"; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Verwijderen"; } }, 4000); return; }
+    rcDraft.splice(Number(b.dataset.rcDel), 1); renderReasons();
+  });
+  $("#rc-add").addEventListener("click", () => {
+    rcDraft.push({ code: "", label: "", active: true, needsNote: false }); renderReasons();
+    $("#rc-body tr:last-child input[data-k=code]").focus();
+  });
+  $("#form-reasons").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const d = await api("admin/reasons", { method: "PUT", body: { codes: rcDraft.map((r) => ({ ...r, code: String(r.code).trim().toUpperCase(), label: String(r.label).trim() })) } });
+      S.settings = { ...(S.settings || {}), reasonCodes: d.codes };
+      rcDraft = d.codes.map((r) => ({ ...r })); renderReasons(); $("#rc-err").textContent = "";
+      toast("Redencodes opgeslagen.");
+    } catch (err) { $("#rc-err").textContent = err.message; }
+  });
   $$("[data-apane]").forEach((b) => b.addEventListener("click", () => setAdminPane(b.dataset.apane)));
   $$("[data-goto-pane]").forEach((b) => b.addEventListener("click", () => setAdminPane(b.dataset.gotoPane)));
 
@@ -1712,16 +1832,17 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     payFor = u;
     $("#pay-sub").textContent = `${u.name}${u.company ? " · " + u.company : ""}${u.kvk ? " · KvK " + u.kvk : ""}`;
     const t = S.today || new Date().toISOString().slice(0, 10);
-    const start = u.paidUntil && u.paidUntil >= t ? addDays(u.paidUntil, 1) : t;
+    const start = u.paidUntil && u.paidUntil >= t ? u.paidUntil : t;
     $("#p-amount").value = ((S.settings?.subscriptionPrice || 0) / 100).toFixed(2);
-    $("#p-paid").value = t; $("#p-until").value = addYearMinusDay(start); $("#p-note").value = ""; $("#pay-err").textContent = "";
+    $("#p-paid").value = t; $("#p-until").value = addYear12(start); $("#p-note").value = ""; $("#pay-err").textContent = "";
     $("#pay-body").innerHTML = `<tr><td colspan="5" class="sub">Laden…</td></tr>`;
     dlgPay.showModal();
     loadPayments();
   }
   function addDays(d, n) { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
-  function addYearMinusDay(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCFullYear(x.getUTCFullYear() + 1); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); }
-  $("#p-paid").addEventListener("change", () => { const v = $("#p-paid").value; if (v) $("#p-until").value = addYearMinusDay(v); });
+  // datum + 12 maanden (29 februari wordt 28 februari)
+  function addYear12(d) { const [y, m, day] = d.split("-").map(Number); const last = new Date(Date.UTC(y + 1, m, 0)).getUTCDate(); return `${y + 1}-${String(m).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`; }
+  $("#p-paid").addEventListener("change", () => { const v = $("#p-paid").value; if (v) $("#p-until").value = addYear12(v); });
   async function loadPayments() {
     try {
       const d = await api("admin/payments?user=" + encodeURIComponent(payFor.id));
@@ -1772,7 +1893,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
         <td class="num">${euro.format(l.price)}</td>
         <td class="num">${bids.length}${bids[0] ? `<div class="sub">hoogste ${euro.format(bids[0].price)}</div>` : ""}</td>
         <td>${fmtDate(l.until)}</td>
-        <td><span class="pill ${st.cls}">${st.label}</span></td>
+        <td><span class="pill ${st.cls}">${st.label}</span>${l.status === "ingetrokken" && l.withdrawReason ? `<div class="sub">${esc(l.withdrawReason.code)} · ${esc(reasonText(l.withdrawReason))}${l.withdrawReason.by === "beheer" ? " (door beheer)" : ""}</div>` : ""}</td>
         <td class="num"><div class="actions" style="justify-content:flex-end;flex-wrap:nowrap">
           ${l.status === "ingetrokken" ? `<button class="btn small" type="button" data-alot="reopen" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">Heropenen</button>`
             : `<button class="btn small" type="button" data-alot="withdraw" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">Intrekken</button>`}
@@ -1782,9 +1903,17 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   }
   $("#alots-body").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-alot]"); if (!b) return;
-    if (b.dataset.alot === "delete" && b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Zeker verwijderen?"; b.classList.add("primary"); setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Verwijderen"; b.classList.remove("primary"); } }, 4000); return; }
+    const act = b.dataset.alot;
+    let reason = null;
+    if (act !== "reopen") {
+      const l = allLots().find((x) => x.id === b.dataset.lot && x.sellerId === b.dataset.seller);
+      reason = await openReason(`${l?.product || "Partij"} ${act === "delete" ? "verwijderen" : "intrekken"}`,
+        act === "delete" ? `De partij van ${l?.company || "de aanbieder"} en de foto's worden definitief verwijderd. Waarom?` : `De partij van ${l?.company || "de aanbieder"} verdwijnt uit het aanbod. Waarom?`,
+        act === "delete" ? "Definitief verwijderen" : "Intrekken");
+      if (!reason) return;
+    }
     try {
-      await api("admin/lots", { method: "POST", body: { sellerId: b.dataset.seller, lotId: b.dataset.lot, action: b.dataset.alot } });
+      await api("admin/lots", { method: "POST", body: { sellerId: b.dataset.seller, lotId: b.dataset.lot, action: act, reason } });
       S.lastNow = ""; await pull(); renderAdminLots();
       toast({ withdraw: "Partij ingetrokken.", reopen: "Partij heropend.", delete: "Partij verwijderd." }[b.dataset.alot]);
     } catch (err) { toast(err.message); }
@@ -1873,27 +2002,34 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   function subState() {
     const s = S.sub; if (!s) return null;
     const soon = new Date(Date.parse(s.today) + 30 * 86400000).toISOString().slice(0, 10);
-    if (!s.paidUntil) return { key: "none", title: "Geen abonnement.", text: "" };
-    if (s.paidUntil < s.today) return { key: "expired", title: "Je abonnement is verlopen.", text: `Het liep tot ${fmtDate(s.paidUntil)}.` };
-    if (s.paidUntil <= soon) return { key: "soon", title: "Je abonnement verloopt binnenkort.", text: `Geldig t/m ${fmtDate(s.paidUntil)}.` };
-    return { key: "ok", title: "Abonnement actief.", text: `Geldig t/m ${fmtDate(s.paidUntil)}.` };
+    const block = s.required && !s.exempt;
+    if (s.exempt && S.user?.role !== "beheerder") return { key: "exempt", title: "Je hebt geen abonnement nodig.", text: "De beheerder heeft je vrijgesteld." };
+    if (!s.paidUntil) return { key: "none", title: "Je hebt nog geen abonnement.", text: block ? "Je kunt het aanbod bekijken, maar pas aanbieden en bieden als je abonnement is betaald." : "" };
+    if (s.paidUntil < s.today) return { key: "expired", title: `Je abonnement is verlopen op ${fmtDate(s.paidUntil)}.`, text: block ? "Je kunt het aanbod bekijken, maar niet aanbieden of bieden tot je opnieuw betaalt." : "" };
+    if (s.paidUntil <= soon) return { key: "soon", title: `Je abonnement loopt af op ${fmtDate(s.paidUntil)}.`, text: "Verleng op tijd, dan kun je zonder onderbreking blijven handelen." };
+    return { key: "ok", title: "Abonnement actief.", text: `Einde abonnement: ${fmtDate(s.paidUntil)}.` };
   }
   function renderSub() {
     const s = S.sub, st = subState();
-    const show = !!(s && st && s.priceExcl > 0 && S.user?.role === "handelaar" && st.key !== "ok");
+    // Zonder geldig abonnement: wel kijken, niet handelen (de server controleert dit ook)
+    const couldWrite = S.canWrite;
+    S.canWrite = s ? !!s.canTrade : true;
+    if (couldWrite !== S.canWrite) render();
+    const show = !!(s && st && s.priceExcl > 0 && S.user?.role === "handelaar" && !["ok", "exempt"].includes(st.key));
     $("#subbar").hidden = !show || document.body.classList.contains("locked");
+    $("#subbar").classList.toggle("blocked", !!(s && !s.canTrade));
     const payLabel = s ? `${st && st.key === "soon" ? "Verlengen" : "Nu betalen"} · ${euro.format(s.priceIncl)} incl. btw` : "";
     if (show) {
       $("#subbar-title").textContent = st.title;
-      $("#subbar-text").textContent = st.text + (s.onlinePayment ? ` Een jaar kost ${euro.format(s.priceExcl)} excl. btw.` : " Neem contact op met de beheerder om te betalen.");
+      $("#subbar-text").textContent = [st.text, s.onlinePayment ? `Een jaar kost ${euro.format(s.priceExcl)} excl. btw; na betaling loopt je abonnement tot ${fmtDate(s.nextUntil)}.` : "Neem contact op met de beheerder om te betalen."].filter(Boolean).join(" ");
       $("#subbar-pay").hidden = !s.onlinePayment; $("#subbar-pay").textContent = payLabel;
     }
-    const showAcc = !!(s && st && s.priceExcl > 0);
+    const showAcc = !!(s && st && (s.priceExcl > 0 || s.paidUntil) && S.user?.role !== "beheerder");
     $("#acc-sub-title").hidden = $("#acc-sub").hidden = !showAcc;
     if (showAcc) {
-      $("#acc-sub-text").textContent = `${st.title} ${st.text}`.trim();
-      $("#acc-sub-pay").hidden = !s.onlinePayment;
-      $("#acc-sub-pay").textContent = st.key === "ok" ? `Jaar vooruit betalen · ${euro.format(s.priceIncl)}` : payLabel;
+      $("#acc-sub-text").textContent = `${st.title} ${st.key === "ok" ? "" : st.text}`.trim() + (st.key === "ok" ? ` Einde abonnement: ${fmtDate(s.paidUntil)}.` : "");
+      $("#acc-sub-pay").hidden = !s.onlinePayment || st.key === "exempt" || !(s.priceExcl > 0);
+      $("#acc-sub-pay").textContent = st.key === "ok" ? `Verlengen tot ${fmtDate(s.nextUntil)} · ${euro.format(s.priceIncl)}` : payLabel;
     }
   }
   async function startPayment(btn) {
@@ -1920,7 +2056,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     for (let i = 0; i < 10; i++) {
       try {
         const st = await api("pay/status?ref=" + encodeURIComponent(ref));
-        if (st.status === "paid") { toast(`Betaling gelukt. Je abonnement is geldig t/m ${fmtDate(st.validUntil)}.`); break; }
+        if (st.status === "paid") { toast(`Betaling gelukt. Einde abonnement: ${fmtDate(st.validUntil)}.`); break; }
         if (["canceled", "expired", "failed"].includes(st.status)) { toast(st.status === "canceled" ? "Betaling geannuleerd. Er is niets afgeschreven." : "De betaling is niet gelukt. Probeer het opnieuw."); break; }
       } catch (err) { toast(err.message); break; }
       if (i === 9) toast("De betaling wordt nog verwerkt. Je ziet het resultaat over een paar minuten bij Mijn account.");
@@ -1933,6 +2069,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     const s = S.settings || {};
     $("#st-vat").value = s.vatPercent ?? 21;
     $("#st-auto").checked = !!s.autoApprovePaid;
+    $("#st-require").checked = s.requireSubscription !== false;
     $$("input[name=st-pm]").forEach((c) => (c.checked = (s.payMethods || []).includes(c.value)));
     $("#st-mollie").innerHTML = s.onlinePayment
       ? `<span class="pill ${s.paymentTestMode ? "warn" : "ok"}">${s.paymentTestMode ? "Testmodus" : "Live"}</span> Mollie is gekoppeld. ${s.paymentTestMode ? "Betalingen zijn testbetalingen; er wordt geen geld overgemaakt." : "Handelaren kunnen hun abonnement online betalen."}`
@@ -1947,7 +2084,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       const d = await api("admin/settings", { method: "PUT", body: {
         siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
         registrationOpen: $("#st-reg").checked, subscriptionPrice: $("#st-price").value || "0", subscriptionText: $("#st-subtext").value,
-        vatPercent: $("#st-vat").value || "0", autoApprovePaid: $("#st-auto").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
+        vatPercent: $("#st-vat").value || "0", autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
       } });
       applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");
     } catch (err) { $("#st-err").textContent = err.message; }
