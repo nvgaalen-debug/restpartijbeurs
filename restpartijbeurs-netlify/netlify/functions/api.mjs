@@ -399,6 +399,13 @@ async function createSubscriptionPayment(req, user, returnParam) {
   await log(user, "betaling", `Online betaling gestart: € ${centsToValue(incl).replace(".", ",")} incl. btw`);
   return { checkoutUrl: checkout, ref };
 }
+// Middernacht in Nederlandse tijd (zomer- en wintertijd) als tijdstip
+function amsMidnight(d) {
+  const guess = new Date(d + "T00:00:00Z");
+  const local = new Date(guess.toLocaleString("en-US", { timeZone: "Europe/Amsterdam" }));
+  const utc = new Date(guess.toLocaleString("en-US", { timeZone: "UTC" }));
+  return new Date(guess.getTime() - (local - utc));
+}
 function addDay(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -1159,12 +1166,21 @@ async function route(req) {
 
     // Logboek
     if (b === "log" && method === "GET") {
-      const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit")) || 200));
-      const before = Number(url.searchParams.get("before")) || 0;
-      const kind = str(url.searchParams.get("kind") || "", 20);
+      const sp = url.searchParams;
+      const limit = Math.min(5000, Math.max(1, Number(sp.get("limit")) || 200));
+      const before = Number(sp.get("before")) || 0;
+      const kind = str(sp.get("kind") || "", 20);
+      const user = str(sp.get("user") || "", 40);
+      const text = str(sp.get("q") || "", 100);
+      const from = sp.get("from"), to = sp.get("to");
       const conds = [], params = [];
-      if (before) { params.push(before); conds.push(`id < $${params.length}`); }
-      if (kind) { params.push(kind); conds.push(`kind = $${params.length}`); }
+      const add = (sql, v) => { params.push(v); conds.push(sql.replace("?", "$" + params.length)); };
+      if (before) add("id < ?", before);
+      if (kind) add("kind = ?", kind);
+      if (user) add("user_id = ?", user);
+      if (text) add("(detail ILIKE ? OR user_name ILIKE $" + (params.length + 1) + ")", "%" + text.replace(/[\\%_]/g, (c) => "\\" + c) + "%");
+      if (validDate(from)) add("at >= ?", amsMidnight(from));
+      if (validDate(to)) add("at < ?", amsMidnight(addDay(to)));
       const r = await q(`SELECT id, at, user_name, kind, detail FROM rpb_log ${conds.length ? "WHERE " + conds.join(" AND ") : ""} ORDER BY id DESC LIMIT ${limit}`, params);
       return json(200, { entries: r.rows.map((x) => ({ id: Number(x.id), at: new Date(x.at).toISOString(), user: x.user_name, kind: x.kind, detail: x.detail })) });
     }
