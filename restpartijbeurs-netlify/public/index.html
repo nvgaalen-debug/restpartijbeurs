@@ -136,6 +136,11 @@ dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-num
 .log-date { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
 .log-date input { padding: 6px 8px; }
 @media (max-width: 640px) { .log-filters > * { flex: 1 1 100%; } .log-date { justify-content: space-between; } .log-date input { flex: 1; max-width: 70%; } }
+.env-test { position: sticky; top: 0; z-index: 50; background: #e8590c; color: #fff; text-align: center; font-weight: 700; letter-spacing: .06em; font-size: 13px; padding: 5px 12px; }
+.danger-zone { margin-top: 18px; border-color: var(--danger, #c0392b); }
+.danger-zone h3 { color: var(--danger, #c0392b); }
+.btn.danger { background: var(--danger, #c0392b); border-color: var(--danger, #c0392b); color: #fff; }
+.btn.danger:disabled { opacity: .6; }
 .pane-head h2 { font-family: var(--font-display); font-size: 26px; text-transform: uppercase; letter-spacing: .02em; margin: 0; }
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; min-width: 0; }
@@ -327,6 +332,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
 </style>
 </head>
 <body class="locked">
+<div class="env-test" id="env-test" hidden>TESTOMGEVING · gegevens en betalingen zijn niet echt</div>
 <div class="bg-agf" aria-hidden="true">
   <svg xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -456,10 +462,34 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       <div class="dlg-head"><h2>Inloggen</h2><p class="welcome" id="welcome-text" hidden></p><p>Log in met je naam en code.</p></div>
       <div class="form">
         <div class="field"><label for="l-name">Naam</label><input id="l-name" autocomplete="username" required></div>
-        <div class="field"><label for="l-code">Code</label><input id="l-code" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="l-code">Code</label><input id="l-code" type="password" autocomplete="current-password" required>
+          <span class="hint"><button class="linkbtn" type="button" id="btn-forgot">Code vergeten?</button></span></div>
       </div>
       <div class="dlg-foot"><span class="err" id="login-err"></span><button class="btn primary" type="submit">Inloggen</button></div>
       <div class="login-alt" id="login-alt">Nog geen account? <button class="linkbtn" type="button" id="btn-to-register">Account aanvragen</button></div>
+    </form>
+    <form class="login" id="form-forgot" novalidate hidden>
+      <div class="dlg-head"><h2>Code vergeten</h2><p id="fg-intro">Vul je naam in en hoe we je kunnen bereiken. De beheerder neemt contact met je op en geeft je een tijdelijke code. Bij het inloggen kies je daarna zelf een nieuwe.</p></div>
+      <div class="form" style="grid-template-columns:1fr">
+        <div class="field"><label for="fg-name">Naam waarmee je inlogt</label><input id="fg-name" autocomplete="username" required></div>
+        <div class="field"><label for="fg-contact" id="fg-contact-label">Telefoon of e-mail</label><input id="fg-contact" autocomplete="tel" placeholder="06 1234 5678 of naam@bedrijf.nl" required></div>
+        <div class="field"><label for="fg-note">Opmerking (optioneel)</label><input id="fg-note" placeholder="bijv. bereikbaar na 14:00"></div>
+        <div class="hp" aria-hidden="true"><label for="fg-website">Website</label><input id="fg-website" tabindex="-1" autocomplete="off"></div>
+      </div>
+      <div class="dlg-foot"><span class="err" id="fg-err"></span>
+        <div class="actions"><button class="btn" type="button" id="fg-back">Terug</button><button class="btn primary" type="submit" id="fg-submit">Versturen</button></div></div>
+    </form>
+    <div class="login" id="forgot-done" hidden>
+      <div class="dlg-head"><h2>Melding verstuurd</h2><p id="fg-done-text">Als deze naam bij ons bekend is, neemt de beheerder zo snel mogelijk contact met je op. Je krijgt dan een tijdelijke code.</p></div>
+      <div class="dlg-foot"><span></span><button class="btn primary" type="button" id="fg-done-back">Naar inloggen</button></div>
+    </div>
+    <form class="login" id="form-reset" novalidate hidden>
+      <div class="dlg-head"><h2>Nieuwe code kiezen</h2><p>Kies een code van minstens 12 tekens. Een paar woorden achter elkaar is makkelijk te onthouden en moeilijk te raden, zoals "rode appels in de kist".</p></div>
+      <div class="form" style="grid-template-columns:1fr">
+        <div class="field"><label for="rs-new">Nieuwe code</label><input id="rs-new" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="rs-new2">Herhaal de nieuwe code</label><input id="rs-new2" type="password" autocomplete="new-password" required></div>
+      </div>
+      <div class="dlg-foot"><span class="err" id="rsf-err"></span><button class="btn primary" type="submit" id="rsf-submit">Code opslaan</button></div>
     </form>
     <form class="login wide" id="form-register" novalidate hidden>
       <div class="dlg-head"><h2>Account aanvragen</h2><p>Voor bedrijven die handelen in aardappelen, groente en fruit. De beheerder controleert je aanvraag; daarna kun je inloggen.</p><p class="welcome" id="reg-subtext" hidden></p></div>
@@ -608,6 +638,10 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       <div class="panel-head"><div><h3>Aanvragen <span class="pill warn" id="pending-n"></span></h3><div class="meta">Controleer het bedrijf, bijvoorbeeld via het KvK-nummer, voor je een aanvraag goedkeurt.</div></div></div>
       <div class="tablewrap"><table class="bids"><thead><tr><th>Naam</th><th>Bedrijf</th><th>KvK</th><th>Contact</th><th>Aangevraagd</th><th></th></tr></thead><tbody id="pending-body"></tbody></table></div>
     </div>
+    <div class="panel pending-panel" id="resets-panel" hidden>
+      <div class="panel-head"><div><h3>Code vergeten <span class="pill warn" id="resets-n"></span></h3><div class="meta">Neem contact op via het <b>bekende</b> telefoonnummer of e-mailadres van de gebruiker. Zo voorkom je dat iemand anders een code voor dit account opvraagt. Na een nieuwe code kiest de gebruiker bij het inloggen zelf een eigen code.</div></div></div>
+      <div class="tablewrap"><table class="bids"><thead><tr><th>Gebruiker</th><th>Opgegeven contact</th><th>Bekend contact</th><th>Gemeld</th><th></th></tr></thead><tbody id="resets-body"></tbody></table></div>
+    </div>
     <div class="stack">
       <form class="panel" id="form-user" novalidate hidden>
         <div class="panel-head"><h3>Nieuwe gebruiker</h3><button class="btn small ghost" type="button" id="btn-hide-newuser">Sluiten</button></div>
@@ -691,9 +725,26 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
             </div>
             <span class="hint">Zet alleen methoden aan die ook in je Mollie-dashboard actief zijn. Niets aangevinkt: Mollie toont alles wat in je account aan staat. Wero is in Nederland vanaf oktober 2026 beschikbaar en staat bij Mollie nog in bèta.</span></div>
           <div class="field full"><label for="st-subtext">Tekst bij het aanvraagformulier</label><input id="st-subtext" maxlength="300" placeholder="bijv. Abonnement € 120 per jaar excl. btw, factuur na goedkeuring."></div>
+          <div class="fieldset-title">E-mail</div>
+          <div class="field full"><div class="ct-card" id="st-mail"></div></div>
+          <div class="field full" id="st-testmail-row" hidden><label for="st-testmail">Testmail sturen naar</label>
+            <div class="actions" style="justify-content:flex-start"><input id="st-testmail" type="email" placeholder="naam@bedrijf.nl" style="flex:1 1 240px"><button class="btn small" type="button" id="st-testmail-btn">Testmail sturen</button></div>
+            <span class="hint" id="st-testmail-res"></span></div>
         </div>
         <div class="dlg-foot"><span class="err" id="st-err"></span><button class="btn primary" type="submit">Opslaan</button></div>
       </form>
+      <div class="panel danger-zone" id="wipe-panel" hidden>
+        <div class="panel-head"><div><h3>Omgeving leegmaken</h3><div class="meta">Voor de testomgeving: begin opnieuw met een schone, lege app. Dit kan niet ongedaan worden gemaakt.</div></div></div>
+        <div class="form" style="grid-template-columns:1fr">
+          <div class="field" role="radiogroup" aria-label="Wat leegmaken">
+            <label class="check" style="color:var(--ink);white-space:normal"><input type="radio" name="wipe-scope" value="trade" checked> <span><b>Alleen partijen, biedingen en foto's</b><br><span class="sub">Gebruikers, betalingen, instellingen, redencodes en logboek blijven staan.</span></span></label>
+            <label class="check" style="color:var(--ink);white-space:normal;margin-top:8px"><input type="radio" name="wipe-scope" value="all"> <span><b>Alles</b><br><span class="sub">Ook alle gebruikers, betalingen, instellingen en het logboek. Je maakt daarna opnieuw de eerste beheerder aan met de installatiecode.</span></span></label>
+          </div>
+          <div class="field"><label for="wipe-confirm">Typ <b>LEEGMAKEN</b> ter bevestiging</label><input id="wipe-confirm" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="wipe-code">Installatiecode (RPB_SETUP_CODE uit Netlify)</label><input id="wipe-code" type="password" autocomplete="off"></div>
+        </div>
+        <div class="dlg-foot"><span class="err" id="wipe-err"></span><button class="btn danger" type="button" id="wipe-btn">Leegmaken</button></div>
+      </div>
     </div>
 
     </div>
@@ -853,7 +904,8 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   <form id="form-code" novalidate>
     <div class="dlg-head"><h2>Nieuwe code</h2><p id="code-sub"></p></div>
     <div class="form" style="grid-template-columns:1fr">
-      <div class="field"><label for="c-code">Nieuwe code (minstens 12 tekens)</label><input id="c-code" type="text" autocomplete="off" required></div>
+      <div class="field"><label for="c-code">Nieuwe code (minstens 12 tekens)</label><input id="c-code" type="text" autocomplete="off" required>
+        <span class="hint"><button class="linkbtn" type="button" id="c-gen">Maak een code voor me</button> · geef hem telefonisch of persoonlijk door</span></div>
     </div>
     <div class="dlg-foot"><span class="err" id="code-err"></span>
       <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Code instellen</button></div></div>
@@ -1596,17 +1648,70 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       return;
     }
     // Heeft de gebruiker intussen al 'Account aanvragen' geopend, laat dat dan staan.
-    const busy = !needsSetup && (!$("#form-register").hidden || !$("#reg-done").hidden);
+    const busy = !needsSetup && ["#form-register", "#reg-done", "#form-forgot", "#forgot-done", "#form-reset"].some((id) => !$(id).hidden);
     $("#form-setup").hidden = !needsSetup;
     if (busy) return;
     $("#form-login").hidden = needsSetup;
-    $("#form-register").hidden = true; $("#reg-done").hidden = true;
+    $("#form-register").hidden = true; $("#reg-done").hidden = true; $("#form-forgot").hidden = true; $("#forgot-done").hidden = true;
     if (!needsSetup) { $("#login-err").textContent = msg || $("#login-err").textContent || ""; $("#l-name").focus(); }
     else $("#s-setup").focus();
   }
 
   // ---------- account aanvragen ----------
-  function showLoginForm() { $("#form-register").hidden = true; $("#reg-done").hidden = true; $("#form-login").hidden = false; $("#l-name").focus(); }
+  function showLoginForm() { $("#form-reset").hidden = true; $("#form-register").hidden = true; $("#reg-done").hidden = true; $("#form-forgot").hidden = true; $("#forgot-done").hidden = true; $("#form-login").hidden = false; $("#l-name").focus(); }
+  $("#btn-forgot").addEventListener("click", () => {
+    $("#form-login").hidden = true; $("#form-forgot").hidden = false; $("#fg-err").textContent = "";
+    $("#fg-name").value = $("#l-name").value.trim(); ($("#fg-name").value ? $("#fg-contact") : $("#fg-name")).focus();
+  });
+  $("#fg-back").addEventListener("click", showLoginForm);
+  function forgotTexts() {
+    const mail = !!S.settings?.mailEnabled;
+    $("#fg-intro").textContent = mail
+      ? "Vul de naam in waarmee je inlogt. Je krijgt een e-mail met een link om een nieuwe code te kiezen, op het e-mailadres dat bij je account hoort."
+      : "Vul je naam in en hoe we je kunnen bereiken. De beheerder neemt contact met je op en geeft je een tijdelijke code. Bij het inloggen kies je daarna zelf een nieuwe.";
+    $("#fg-contact-label").textContent = mail ? "Telefoon (optioneel, voor als we je niet kunnen mailen)" : "Telefoon of e-mail";
+    $("#fg-done-text").textContent = mail
+      ? "Als deze naam bij ons bekend is, krijg je binnen een paar minuten een e-mail met een link. Die werkt 60 minuten. Niets ontvangen? Kijk ook in je map met ongewenste e-mail, of neem contact op met de beheerder."
+      : "Als deze naam bij ons bekend is, neemt de beheerder zo snel mogelijk contact met je op. Je krijgt dan een tijdelijke code.";
+  }
+  $("#btn-forgot").addEventListener("click", forgotTexts);
+  // Link uit de e-mail: /?herstel=<token>
+  let resetToken = "";
+  function showResetForm(token) {
+    resetToken = token;
+    ["#form-login", "#form-register", "#reg-done", "#form-forgot", "#forgot-done", "#form-setup"].forEach((id) => ($(id).hidden = true));
+    $("#form-reset").hidden = false; $("#rsf-err").textContent = ""; $("#rs-new").focus();
+  }
+  $("#form-reset").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const c1 = $("#rs-new").value;
+    const err = c1.length < 12 ? "De code moet minstens 12 tekens hebben." : c1 !== $("#rs-new2").value ? "De twee codes zijn niet gelijk." : "";
+    if (err) { $("#rsf-err").textContent = err; return; }
+    const btn = $("#rsf-submit"); btn.disabled = true;
+    try {
+      const d = await api("reset", { method: "POST", body: { token: resetToken, code: c1 } });
+      resetToken = ""; $("#rs-new").value = ""; $("#rs-new2").value = "";
+      $("#form-reset").hidden = true; showLoginForm();
+      $("#l-name").value = d.name || ""; $("#l-code").focus();
+      $("#login-err").textContent = "Je nieuwe code is opgeslagen. Log hiermee in.";
+    } catch (ex) { $("#rsf-err").textContent = ex.message; }
+    finally { btn.disabled = false; }
+  });
+  ["#fg-name", "#fg-contact"].forEach((id) => $(id).addEventListener("input", () => ($("#fg-err").textContent = "")));
+  $("#fg-done-back").addEventListener("click", showLoginForm);
+  $("#form-forgot").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("#fg-name").value.trim(), contact = $("#fg-contact").value.trim();
+    const err = !name ? "Vul je naam in." : !contact && !S.settings?.mailEnabled ? "Vul je telefoonnummer of e-mailadres in." : "";
+    if (err) { $("#fg-err").textContent = err; return; }
+    const btn = $("#fg-submit"); btn.disabled = true;
+    try {
+      await api("forgot", { method: "POST", body: { name, contact, note: $("#fg-note").value.trim(), website: $("#fg-website").value } });
+      ["#fg-name", "#fg-contact", "#fg-note"].forEach((id) => ($(id).value = ""));
+      $("#form-forgot").hidden = true; $("#forgot-done").hidden = false;
+    } catch (ex) { $("#fg-err").textContent = ex.message; }
+    finally { btn.disabled = false; }
+  });
   $("#btn-to-register").addEventListener("click", () => {
     $("#form-login").hidden = true; $("#form-register").hidden = false; $("#reg-err").textContent = ""; $("#r-company").focus();
   });
@@ -1713,14 +1818,29 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   let users = [];
   async function loadUsers() {
     if (S.user?.role !== "beheerder") return;
-    try { const d = await api("users"); users = d.users; S.today = d.today; renderUsers(); }
+    try {
+      const [d, rs] = await Promise.all([api("users"), api("admin/resets").catch(() => ({ resets: [] }))]);
+      users = d.users; S.today = d.today; S.resets = rs.resets || []; renderUsers();
+    }
     catch (err) { $("#users-body").innerHTML = `<tr><td colspan="6" class="sub">${esc(err.message)}</td></tr>`; }
   }
   function renderUsers() {
     const pend = users.filter((u) => u.pending);
     $("#pending-panel").hidden = !pend.length;
     $("#pending-n").textContent = pend.length === 1 ? "1 open" : `${pend.length} open`;
-    setPendingBadge(pend.length);
+    const rs = S.resets || [];
+    setPendingBadge(pend.length + rs.length);
+    $("#resets-panel").hidden = !rs.length;
+    $("#resets-n").textContent = rs.length === 1 ? "1 open" : `${rs.length} open`;
+    $("#resets-body").innerHTML = rs.map((r) => `<tr>
+      <td><b>${esc(r.name)}</b><div class="sub">${esc(r.company || "")}</div>${r.note ? `<div class="sub">“${esc(r.note)}”</div>` : ""}</td>
+      <td>${esc(r.contact)}</td>
+      <td>${esc(r.known) || `<span class="sub">niet bekend</span>`}</td>
+      <td class="sub">${new Date(r.at).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
+      <td class="num"><div class="actions" style="justify-content:flex-end">
+        <button class="btn primary small" type="button" data-uact="code" data-uid="${esc(r.userId)}">Nieuwe code</button>
+        <button class="btn small ghost" type="button" data-rclose="${esc(r.id)}">Afsluiten</button>
+      </div></td></tr>`).join("");
     $("#pending-body").innerHTML = pend.map((u) => `<tr>
       <td><b>${esc(u.name)}</b>${u.note ? `<div class="sub">“${esc(u.note)}”</div>` : ""}</td>
       <td>${esc(u.company)}<div style="margin-top:4px">${u.paidUntil ? `<span class="pill ok">Betaald t/m ${fmtDate(u.paidUntil)}</span>` : `<span class="pill off">Nog niet betaald</span>`}</div></td>
@@ -1817,11 +1937,23 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     try { await api("users/" + encodeURIComponent(u.id), { method: "PATCH", body }); await loadUsers(); toast("Gebruiker bijgewerkt."); }
     catch (err) { toast(err.message); }
   });
+  $("#view-admin").addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-rclose]"); if (!t) return;
+    try { await api("admin/resets/" + encodeURIComponent(t.dataset.rclose), { method: "DELETE" }); await loadUsers(); toast("Melding afgesloten."); }
+    catch (err) { toast(err.message); }
+  });
+  const CODE_WORDS = ["appel", "peer", "kool", "prei", "sla", "bes", "druif", "kiwi", "peen", "biet", "raap", "ui", "mango", "pruim", "kers", "venkel", "spruit", "andijvie", "tomaat", "paprika", "bonen", "erwt", "radijs", "meloen", "citroen", "banaan", "kist", "krat", "veiling", "schuur"];
+  $("#c-gen").addEventListener("click", () => {
+    const rnd = (n) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+    let c = "";
+    while (c.length < 14) c = [0, 1, 2].map(() => CODE_WORDS[rnd(CODE_WORDS.length)]).join("-") + "-" + (10 + rnd(90));
+    $("#c-code").value = c; $("#c-code").select();
+  });
   $("#form-code").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
       await api("users/" + encodeURIComponent(codeFor.id), { method: "PATCH", body: { code: $("#c-code").value } });
-      dlgCode.close(); toast(`Nieuwe code ingesteld voor ${codeFor.name}.`);
+      dlgCode.close(); toast(`Nieuwe code ingesteld voor ${codeFor.name}. Geef hem persoonlijk door.`); loadUsers();
     } catch (err) { $("#code-err").textContent = err.message; }
   });
   $("#form-user").addEventListener("submit", async (e) => {
@@ -2120,8 +2252,11 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   function applySettings(s) {
     if (!s) return;
     S.settings = s;
+    forgotTexts();
     $("#site-name").textContent = s.siteName;
-    document.title = s.siteName;
+    const isTest = s.environment === "test";
+    $("#env-test").hidden = !isTest;
+    document.title = (isTest ? "[TEST] " : "") + s.siteName;
     $("#welcome-text").textContent = s.welcomeText || ""; $("#welcome-text").hidden = !s.welcomeText;
     $("#login-alt").hidden = !s.registrationOpen;
     $("#reg-subtext").textContent = s.subscriptionText || ""; $("#reg-subtext").hidden = !s.subscriptionText;
@@ -2254,10 +2389,36 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     $("#st-mollie").innerHTML = s.onlinePayment
       ? `<span class="pill ${s.paymentTestMode ? "warn" : "ok"}">${s.paymentTestMode ? "Testmodus" : "Live"}</span> Mollie is gekoppeld. ${s.paymentTestMode ? "Betalingen zijn testbetalingen; er wordt geen geld overgemaakt." : "Handelaren kunnen hun abonnement online betalen."}`
       : `<span class="pill off">Niet gekoppeld</span> Zet je Mollie API-sleutel in Netlify als <code>MOLLIE_API_KEY</code> en doe een nieuwe deploy.`;
+    $("#st-mail").innerHTML = s.mailEnabled
+      ? `<span class="pill ok">Gekoppeld via ${s.mailProvider === "gmail" ? "Gmail" : "Brevo"}</span> Bij "Code vergeten?" krijgt een gebruiker een link op het e-mailadres van zijn account. Zonder bekend e-mailadres komt de melding hier bij Gebruikers.`
+      : `<span class="pill off">Niet gekoppeld</span> Zet in Netlify <code>GMAIL_USER</code> (je Gmail-adres) en <code>GMAIL_APP_PASSWORD</code> (een app-wachtwoord van Google) en doe een nieuwe deploy. Tot die tijd komen meldingen "code vergeten" hier bij Gebruikers.`;
+    $("#st-testmail-row").hidden = !s.mailEnabled;
+    $("#wipe-panel").hidden = !s.wipeAllowed;
     $("#st-name").value = s.siteName || ""; $("#st-welcome").value = s.welcomeText || ""; $("#st-ann").value = s.announcement || "";
     $("#st-reg").checked = s.registrationOpen !== false; $("#st-price").value = ((s.subscriptionPrice || 0) / 100).toFixed(2); $("#st-subtext").value = s.subscriptionText || "";
     $("#st-err").textContent = "";
   }
+  $("#wipe-btn").addEventListener("click", async () => {
+    const scope = document.querySelector("input[name=wipe-scope]:checked")?.value;
+    const confirm = $("#wipe-confirm").value.trim(), setupCode = $("#wipe-code").value;
+    const err = confirm !== "LEEGMAKEN" ? "Typ LEEGMAKEN in hoofdletters ter bevestiging." : !setupCode ? "Vul de installatiecode in." : "";
+    if (err) { $("#wipe-err").textContent = err; return; }
+    const btn = $("#wipe-btn"); btn.disabled = true; $("#wipe-err").textContent = "";
+    try {
+      const d = await api("admin/wipe", { method: "POST", body: { scope, confirm, setupCode } });
+      $("#wipe-confirm").value = ""; $("#wipe-code").value = "";
+      if (d.scope === "all") { signOutLocal(); $("#user-box").hidden = true; showLogin(); toast("Alles is verwijderd. Maak de eerste beheerder opnieuw aan."); return; }
+      S.lastNow = ""; await pull(true);
+      toast(`Leeggemaakt: ${d.counts.rpb_photos} foto's en alle partijen en biedingen verwijderd.`);
+    } catch (ex) { $("#wipe-err").textContent = ex.message; }
+    finally { btn.disabled = false; }
+  });
+  $("#st-testmail-btn").addEventListener("click", async () => {
+    const btn = $("#st-testmail-btn"); btn.disabled = true; $("#st-testmail-res").textContent = "Versturen…";
+    try { const d = await api("admin/testmail", { method: "POST", body: { to: $("#st-testmail").value.trim() } }); $("#st-testmail-res").textContent = `Testmail verstuurd naar ${d.to}. Kijk ook in de map met ongewenste e-mail.`; }
+    catch (err) { $("#st-testmail-res").textContent = err.message; }
+    finally { btn.disabled = false; }
+  });
   $("#form-settings").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
@@ -2486,6 +2647,11 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
 
   // ---------- boot ----------
   (async () => {
+    const herstel = new URLSearchParams(location.search).get("herstel");
+    if (herstel) { // link uit de e-mail "code vergeten": token direct uit de adresbalk halen
+      history.replaceState(null, "", location.pathname);
+      await showLogin(); showResetForm(herstel); return;
+    }
     try { S.legacyToken = localStorage.getItem("rpb.token") || ""; } catch {}
     try { const d = await api("me"); setToken(true); enterApp(d.user); }
     catch (err) {
