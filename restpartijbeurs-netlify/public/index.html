@@ -132,6 +132,10 @@ dl.specs dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-num
 .admin-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .admin-main > [data-pane] { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .pane-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.log-filters .search { flex: 1 1 260px; }
+.log-date { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.log-date input { padding: 6px 8px; }
+@media (max-width: 640px) { .log-filters > * { flex: 1 1 100%; } .log-date { justify-content: space-between; } .log-date input { flex: 1; max-width: 70%; } }
 .pane-head h2 { font-family: var(--font-display); font-size: 26px; text-transform: uppercase; letter-spacing: .02em; margin: 0; }
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; min-width: 0; }
@@ -644,12 +648,20 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     </div>
 
     <div data-pane="log" hidden>
-      <div class="pane-head"><h2>Logboek</h2>
+      <div class="pane-head"><h2>Logboek</h2><span class="sub" id="log-count"></span></div>
+      <div class="filters log-filters" style="margin:12px 0 14px">
+        <input class="search" id="log-q" type="search" placeholder="Zoek in het logboek, bijv. Elstar of KWAL" aria-label="Zoeken in logboek">
+        <select class="sel" id="log-user" aria-label="Gebruiker"><option value="">Alle gebruikers</option></select>
         <select class="sel" id="log-kind" aria-label="Soort activiteit">
           <option value="">Alle activiteit</option><option value="inloggen">Inloggen</option><option value="account">Aanvragen</option>
           <option value="partij">Partijen</option><option value="bod">Biedingen</option><option value="gunning">Gunningen</option>
           <option value="betaling">Betalingen</option><option value="beheer">Beheer</option>
-        </select></div>
+        </select>
+        <label class="log-date">Van <input class="sel" id="log-from" type="date"></label>
+        <label class="log-date">Tot en met <input class="sel" id="log-to" type="date"></label>
+        <button class="btn small ghost" type="button" id="log-clear" hidden>Filters wissen</button>
+        <button class="btn small" type="button" id="log-export">Exporteren (CSV)</button>
+      </div>
       <div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Tijdstip</th><th>Gebruiker</th><th>Soort</th><th>Wat</th></tr></thead><tbody id="log-body"></tbody></table></div>
         <div class="nobids" style="text-align:center"><button class="btn small" type="button" id="log-more" hidden>Meer laden</button></div></div>
       <p class="sub" style="margin-top:8px">De laatste 5.000 regels worden bewaard.</p>
@@ -935,6 +947,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
         const r = await api("doc/" + collection, { method: "PUT", body: { data: doc, base: S.versions[collection + "/" + S.me] || 0 } });
         map.set(S.me, r.data || doc);
         S.versions[collection + "/" + S.me] = r.version;
+        S.writeSeq = (S.writeSeq || 0) + 1;
         render();
         return true;
       } catch (e) {
@@ -981,12 +994,17 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     if (!S.token) return;
     try {
       const since = S.lastNow && !full ? new Date(Date.parse(S.lastNow) - 5000).toISOString() : "";
+      const seq0 = S.writeSeq || 0;
       const d = await api("data" + (since ? "?since=" + encodeURIComponent(since) : ""));
+      // Is er tijdens het ophalen iets opgeslagen, dan is dit antwoord mogelijk ouder: niet gebruiken, direct opnieuw
+      if ((S.writeSeq || 0) !== seq0) { setTimeout(() => pull(full), 50); return; }
       if (d.full) { S.lotsDocs = new Map(); S.bidsDocs = new Map(); }
       for (const doc of d.docs || []) {
         const map = doc.collection === "lots" ? S.lotsDocs : doc.collection === "bids" ? S.bidsDocs : null;
         if (!map) continue;
-        S.versions[doc.collection + "/" + doc.id] = doc.version || 0;
+        const key = doc.collection + "/" + doc.id;
+        if (!d.full && (doc.version || 0) < (S.versions[key] || 0)) continue; // we hebben al een nieuwere versie
+        S.versions[key] = doc.version || 0;
         if (doc.data === null) map.delete(doc.id); else map.set(doc.id, doc.data);
       }
       if (d.market) S.market = d.market;
@@ -2044,21 +2062,59 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   });
 
   // Logboek
-  let logOldest = 0;
-  async function loadLog(reset) {
-    if (reset) { logOldest = 0; $("#log-body").innerHTML = `<tr><td colspan="4" class="sub">Laden…</td></tr>`; }
-    const kind = $("#log-kind").value;
+  let logOldest = 0, logShown = 0, logSeq = 0;
+  function logFilter() {
+    const f = { q: $("#log-q").value.trim(), user: $("#log-user").value, kind: $("#log-kind").value, from: $("#log-from").value, to: $("#log-to").value };
+    return { f, qs: Object.entries(f).filter(([, v]) => v).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join(""), any: Object.values(f).some(Boolean) };
+  }
+  const fmtLogTime = (iso) => { const d = new Date(iso); return d.toLocaleString("nl-NL", { day: "numeric", month: "short", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}), hour: "2-digit", minute: "2-digit" }); };
+  async function fillLogUsers() {
     try {
-      const d = await api(`admin/log?limit=100${logOldest ? "&before=" + logOldest : ""}${kind ? "&kind=" + encodeURIComponent(kind) : ""}`);
-      const rows = d.entries.map((x) => `<tr><td class="sub" style="white-space:nowrap">${fmtTime(x.at)}</td><td>${esc(x.user || "—")}</td><td><span class="pill ${x.kind === "gunning" || x.kind === "betaling" ? "ok" : x.kind === "beheer" ? "acc" : "off"}">${esc(KIND[x.kind] || x.kind)}</span></td><td>${esc(x.detail)}</td></tr>`).join("");
-      if (reset) $("#log-body").innerHTML = rows || `<tr><td colspan="4" class="sub">Nog niets gelogd.</td></tr>`;
+      if (!users.length) users = (await api("users")).users || [];
+      const cur = $("#log-user").value;
+      const list = users.slice().sort((a, b) => (a.company || a.name).localeCompare(b.company || b.name, "nl"));
+      $("#log-user").innerHTML = `<option value="">Alle gebruikers</option>` + list.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}${u.company ? " · " + esc(u.company) : ""}</option>`).join("");
+      $("#log-user").value = cur;
+    } catch {}
+  }
+  async function loadLog(reset) {
+    const { qs, any } = logFilter();
+    const seq = ++logSeq;
+    $("#log-clear").hidden = !any;
+    if (reset) { logOldest = 0; logShown = 0; $("#log-body").innerHTML = `<tr><td colspan="4" class="sub">Laden…</td></tr>`; fillLogUsers(); }
+    try {
+      const d = await api(`admin/log?limit=100${logOldest ? "&before=" + logOldest : ""}${qs}`);
+      if (seq !== logSeq) return; // er is intussen een nieuwere zoekopdracht
+      const rows = d.entries.map((x) => `<tr><td class="sub" style="white-space:nowrap">${fmtLogTime(x.at)}</td><td>${esc(x.user || "—")}</td><td><span class="pill ${x.kind === "gunning" || x.kind === "betaling" ? "ok" : x.kind === "beheer" ? "acc" : "off"}">${esc(KIND[x.kind] || x.kind)}</span></td><td>${esc(x.detail)}</td></tr>`).join("");
+      if (reset) $("#log-body").innerHTML = rows || `<tr><td colspan="4" class="sub">${any ? "Niets gevonden met deze filters." : "Nog niets gelogd."}</td></tr>`;
       else $("#log-body").insertAdjacentHTML("beforeend", rows);
+      logShown += d.entries.length;
       if (d.entries.length) logOldest = d.entries[d.entries.length - 1].id;
       $("#log-more").hidden = d.entries.length < 100;
-    } catch (err) { $("#log-body").innerHTML = `<tr><td colspan="4" class="sub">${esc(err.message)}</td></tr>`; }
+      $("#log-count").textContent = logShown ? `${num.format(logShown)}${d.entries.length < 100 ? "" : "+"} regel${logShown === 1 ? "" : "s"}${any ? " gevonden" : ""}` : "";
+    } catch (err) { if (seq === logSeq) $("#log-body").innerHTML = `<tr><td colspan="4" class="sub">${esc(err.message)}</td></tr>`; }
   }
-  $("#log-kind").addEventListener("change", () => loadLog(true));
+  let logT;
+  $("#log-q").addEventListener("input", () => { clearTimeout(logT); logT = setTimeout(() => loadLog(true), 300); });
+  ["#log-user", "#log-kind", "#log-from", "#log-to"].forEach((id) => $(id).addEventListener("change", () => loadLog(true)));
+  $("#log-clear").addEventListener("click", () => { ["#log-q", "#log-user", "#log-kind", "#log-from", "#log-to"].forEach((id) => ($(id).value = "")); loadLog(true); });
   $("#log-more").addEventListener("click", () => loadLog(false));
+  // Exporteren: alle regels die aan de filters voldoen (max. 5.000), als CSV voor Excel
+  $("#log-export").addEventListener("click", async () => {
+    const btn = $("#log-export"); btn.disabled = true;
+    try {
+      const d = await api(`admin/log?limit=5000${logFilter().qs}`);
+      const cell = (v) => { let t = String(v ?? ""); if (/^[=+\-@]/.test(t)) t = "'" + t; return `"${t.replace(/"/g, '""')}"`; };
+      const lines = [["Tijdstip", "Gebruiker", "Soort", "Wat"].map(cell).join(";")].concat(d.entries.map((x) =>
+        [new Date(x.at).toLocaleString("nl-NL"), x.user || "", KIND[x.kind] || x.kind, x.detail].map(cell).join(";")));
+      const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = `logboek-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast(`${num.format(d.entries.length)} regels geëxporteerd.`);
+    } catch (err) { toast(err.message); }
+    finally { btn.disabled = false; }
+  });
 
   // Website-instellingen
   function applySettings(s) {
