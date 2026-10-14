@@ -8,7 +8,16 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 
 | Bestand | Wat het is |
 | --- | --- |
-| `public/index.html` | De app zelf (één HTML-bestand) |
+| `public/index.html` | De schermen van de app |
+| `public/app.css` | De opmaak |
+| `public/js/core.js` | Basis: praten met de server, opslaan, meldingen |
+| `public/js/market.js` | Aanbod, mijn partijen, mijn biedingen, foto's, contact |
+| `public/js/account.js` | Inloggen, account aanvragen, code vergeten, mijn account |
+| `public/js/admin.js` | Beheer: dashboard, gebruikers, redencodes, betalingen, logboek, instellingen |
+| `public/js/payments.js` | Abonnement online betalen (Mollie) |
+| `public/js/stats.js` | Beheer: statistieken |
+| `public/js/start.js` | Start de app (wordt als laatste geladen) |
+| `public/_headers` | Beveiligingsheaders voor de website (o.a. Content-Security-Policy) |
 | `netlify/functions/api.mjs` | De serverfunctie op `/api/...`: inloggen, gebruikers, partijen en biedingen |
 | `netlify.toml` | Vertelt Netlify waar de app en de functie staan |
 | `package.json` | Laat Netlify de PostgreSQL-driver (`pg`) installeren |
@@ -30,6 +39,15 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `DATABASE_URL` | Dezelfde waarde als bij de Vloeren Kassa-site (de Service URI van Aiven). Markeer als secret. |
 | `PG_SSL_INSECURE` | `true`, net als bij de kassa. Of gebruik `PG_SSL_CA` met het CA-certificaat uit Aiven. |
 | `RPB_SETUP_CODE` | Een zelfbedachte code van minstens 16 tekens. Alleen nodig om de eerste beheerder aan te maken. |
+| `MOLLIE_API_KEY` | Optioneel. De API-sleutel uit je Mollie-dashboard (`test_...` om te testen, `live_...` voor echte betalingen). Markeer als secret. Zonder deze sleutel registreert de beheerder betalingen handmatig. |
+| `APP_ENV` | Alleen in de testomgeving: `test`. Toont een oranje balk "TESTOMGEVING". |
+| `PG_SCHEMA` | Alleen in de testomgeving, bijv. `rpb_test`. De app gebruikt dan een eigen schema in dezelfde database, gescheiden van de echte gegevens en van Vloeren Kassa. |
+| `ALLOW_WIPE` | Alleen tijdelijk: `true` zet "Omgeving leegmaken" (Beheer → Website-instellingen) aan buiten de testomgeving. Haal hem daarna weer weg. In de testomgeving (`APP_ENV=test`) staat leegmaken altijd aan. |
+| `GMAIL_USER` | Optioneel. Je Gmail-adres; de app verstuurt daarmee mails bij "Code vergeten?". |
+| `GMAIL_APP_PASSWORD` | Nodig bij `GMAIL_USER`. Een app-wachtwoord van Google (myaccount.google.com → Beveiliging → App-wachtwoorden; vereist tweestapsverificatie). Markeer als secret. |
+| `BREVO_API_KEY` | Optioneel, alternatief voor Gmail. API-sleutel van Brevo (brevo.com → SMTP & API → API Keys). Markeer als secret. Daarmee krijgen gebruikers bij "Code vergeten?" zelf een resetlink per e-mail. |
+| `MAIL_FROM` | Nodig bij `BREVO_API_KEY`. Afzenderadres, bijvoorbeeld `noreply@jouwdomein.nl`. Het domein moet in Brevo geverifieerd zijn. |
+| `MAIL_FROM_NAME` | Optioneel. Afzendernaam; standaard de naam van de website. |
 
 4. Ga naar **Deploys → Trigger deploy → Deploy site** en wacht tot hij op **Published** staat.
 
@@ -41,15 +59,23 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 Na de eerste beheerder werkt `RPB_SETUP_CODE` niet meer; je mag hem laten staan of verwijderen.
 
 ## Een update doorvoeren
+
+Upload altijd **alle gewijzigde bestanden in één keer**. De bestanden in `public/` en `netlify/functions/api.mjs` horen bij elkaar; een half bijgewerkte app werkt niet goed. Met GitHub Desktop gaat dat in één commit.
+
 Vervang het gewijzigde bestand op GitHub en kies **Commit changes**. Netlify bouwt zelf opnieuw.
 Gegevens blijven staan; ingelogde gebruikers blijven ingelogd.
 
 ## Beveiliging in het kort
-- Codes worden met scrypt gehasht opgeslagen; de database bevat geen leesbare codes.
-- Elke wijziging wordt op de server gecontroleerd: een handelaar kan alleen zijn eigen partijen en biedingen schrijven.
-- Na 5 foute codes is een account 2 minuten geblokkeerd. Een sessie verloopt na 30 dagen of bij uitloggen.
+- **Codes:** minstens 12 tekens, met scrypt gehasht opgeslagen. Wie nog een kortere code heeft, of een code die de beheerder heeft ingesteld, moet bij het inloggen eerst zelf een nieuwe kiezen.
+- **Sessie:** in een HttpOnly-, Secure- en SameSite=Strict-cookie. JavaScript kan hem niet lezen. Een sessie verloopt na 30 dagen of bij uitloggen. Wijzigingen worden alleen geaccepteerd vanaf de eigen website (Origin-controle).
+- **Raden van codes:** na 5 foute codes is een account 15 minuten geblokkeerd. Na 30 mislukte pogingen vanaf één netwerkadres is inloggen vanaf dat adres 15 minuten geblokkeerd. Aanvragen: maximaal 5 per uur per adres.
+- **Autorisatie:** elke beheerroute controleert op de server of je beheerder bent. Een handelaar kan alleen zijn eigen partijen en biedingen schrijven.
+- **Gunnen en bieden:** de server rekent zelf. Bij een gunning haalt hij prijs en hoeveelheid uit het echte bod, rekent hij de resthoeveelheid uit en weigert hij meer dan er is. Een gunning kan niet worden gewist of gewijzigd. Op een ingetrokken, verkochte of verlopen partij kun je niet bieden. Op je eigen partij ook niet.
+- **Gelijktijdige wijzigingen:** elk document heeft een versienummer en wordt alleen opgeslagen op de versie die gelezen is. Bij een conflict haalt de app de nieuwe versie op en voert de wijziging opnieuw uit.
+- **Wie ziet wat:** handelaren zien van andere partijen alleen het hoogste bod en het aantal biedingen, niet wie wat bood of aan wie tegen welke prijs gegund is. Een verkoper ziet alle biedingen op zijn eigen partijen. Een koper ziet zijn eigen gunning. De beheerder ziet alles.
+- **Foto's:** de server controleert of het echt een JPEG of WebP is. Je kunt alleen je eigen foto's gebruiken of verwijderen. Losse foto's die nergens meer bij horen, worden na 6 uur opgeruimd.
+- **Betalingen:** de status komt altijd van Mollie zelf, nooit van de browser of de webhookmelding.
 - Een gedeactiveerde gebruiker of een gebruiker met een nieuwe code wordt direct uitgelogd.
-- Alle ingelogde gebruikers zien alle partijen en biedingen, inclusief bedrijfsnamen en contactgegevens.
 
 ## Problemen
 | Melding | Oplossing |
