@@ -469,7 +469,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
         <div class="field full"><label for="r-note">Wat handel je? (optioneel)</label><textarea id="r-note" rows="2" placeholder="bijv. groothandel in fruit, verwerker van aardappelen"></textarea></div>
         <div class="fieldset-title">Inloggegevens</div>
         <div class="field full"><label for="r-name">Jouw naam *</label><input id="r-name" autocomplete="username" required><span class="hint">Hiermee log je in.</span></div>
-        <div class="field"><label for="r-code">Kies een code * (minstens 4 tekens)</label><input id="r-code" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="r-code">Kies een code * (minstens 12 tekens)</label><input id="r-code" type="password" autocomplete="new-password" required></div>
         <div class="field"><label for="r-code2">Herhaal de code *</label><input id="r-code2" type="password" autocomplete="new-password" required></div>
         <div class="fieldset-title" id="reg-pay-title" hidden>Abonnement</div>
         <div class="field full" id="reg-pay" hidden>
@@ -497,7 +497,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
         <div class="field"><label for="s-name">Jouw naam</label><input id="s-name" autocomplete="username" required></div>
         <div class="field"><label for="s-company">Bedrijfsnaam</label><input id="s-company"></div>
         <div class="field"><label for="s-contact">Telefoon of e-mail</label><input id="s-contact"></div>
-        <div class="field"><label for="s-code">Kies een code (minstens 4 tekens)</label><input id="s-code" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="s-code">Kies een code (minstens 12 tekens)</label><input id="s-code" type="password" autocomplete="new-password" required></div>
         <div class="field"><label for="s-code2">Herhaal de code</label><input id="s-code2" type="password" autocomplete="new-password" required></div>
       </div>
       <div class="dlg-foot"><span class="err" id="setup-err"></span><button class="btn primary" type="submit">Account aanmaken</button></div>
@@ -611,7 +611,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
           <div class="field"><label for="u-name">Naam (om mee in te loggen)</label><input id="u-name" required></div>
           <div class="field"><label for="u-company">Bedrijfsnaam</label><input id="u-company"></div>
           <div class="field"><label for="u-contact">Telefoon of e-mail</label><input id="u-contact"></div>
-          <div class="field"><label for="u-code">Code (minstens 4 tekens)</label><input id="u-code" type="text" autocomplete="off" required><span class="hint">Geef de code persoonlijk door. De gebruiker kan hem zelf wijzigen.</span></div>
+          <div class="field"><label for="u-code">Code (minstens 12 tekens)</label><input id="u-code" type="text" autocomplete="off" required><span class="hint">Geef de code persoonlijk door. Bij de eerste keer inloggen kiest de gebruiker zelf een nieuwe code.</span></div>
           <div class="field"><label for="u-role">Rol</label><select id="u-role"><option value="handelaar">Handelaar</option><option value="beheerder">Beheerder</option></select></div>
         </div>
         <div class="dlg-foot"><span class="err" id="user-err"></span><button class="btn primary" type="submit">Gebruiker aanmaken</button></div>
@@ -773,7 +773,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       <div class="field full" id="acc-sub" hidden><div class="ct-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span id="acc-sub-text"></span><button class="btn primary small" type="button" id="acc-sub-pay" hidden></button></div></div>
       <div class="fieldset-title">Code wijzigen (optioneel)</div>
       <div class="field"><label for="a-cur">Huidige code</label><input id="a-cur" type="password" autocomplete="current-password"></div>
-      <div class="field"><label for="a-new">Nieuwe code</label><input id="a-new" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="a-new">Nieuwe code (minstens 12 tekens)</label><input id="a-new" type="password" autocomplete="new-password"></div>
     </div>
     <div class="dlg-foot"><span class="err" id="acc-err"></span>
       <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div></div>
@@ -824,11 +824,24 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   </form>
 </dialog>
 
+<dialog id="dlg-forcecode">
+  <form id="form-forcecode" novalidate>
+    <div class="dlg-head"><h2>Kies een nieuwe code</h2><p id="fc-sub">Voor je veiligheid moet je code minstens 12 tekens hebben. Een paar woorden achter elkaar is makkelijk te onthouden en moeilijk te raden, zoals "rode appels in de kist".</p></div>
+    <div class="form" style="grid-template-columns:1fr">
+      <div class="field"><label for="fc-cur">Huidige code</label><input id="fc-cur" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label for="fc-new">Nieuwe code (minstens 12 tekens)</label><input id="fc-new" type="password" autocomplete="new-password" required></div>
+      <div class="field"><label for="fc-new2">Herhaal de nieuwe code</label><input id="fc-new2" type="password" autocomplete="new-password" required></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="fc-err"></span>
+      <div class="actions"><button class="btn" type="button" id="fc-logout">Uitloggen</button><button class="btn primary" type="submit">Code opslaan</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-code">
   <form id="form-code" novalidate>
     <div class="dlg-head"><h2>Nieuwe code</h2><p id="code-sub"></p></div>
     <div class="form" style="grid-template-columns:1fr">
-      <div class="field"><label for="c-code">Nieuwe code (minstens 4 tekens)</label><input id="c-code" type="text" autocomplete="off" required></div>
+      <div class="field"><label for="c-code">Nieuwe code (minstens 12 tekens)</label><input id="c-code" type="text" autocomplete="off" required></div>
     </div>
     <div class="dlg-foot"><span class="err" id="code-err"></span>
       <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Code instellen</button></div></div>
@@ -850,7 +863,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
 
   const S = {
     token: "", user: null, me: null, canWrite: null, ready: false, offline: false, lastNow: "",
-    lotsDocs: new Map(), bidsDocs: new Map(), profiles: {},
+    lotsDocs: new Map(), bidsDocs: new Map(), profiles: {}, versions: {}, market: {}, legacyToken: "",
     view: "market", cat: "", q: "", sort: "new", showClosed: false,
     editing: null, bidLot: null,
   };
@@ -896,32 +909,51 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     }
     return out.sort((a, b) => b.price - a.price);
   }
+  // Hoogste bod en aantal biedingen per partij (de server stuurt dit zonder namen mee)
+  function bidSummary(lotId) {
+    const m = S.market && S.market[lotId];
+    if (m) return m;
+    const bids = bidsFor(lotId);
+    return { top: bids[0] ? bids[0].price : 0, n: bids.length };
+  }
   function myBidDoc() { return S.bidsDocs.get(S.me) || null; }
   function myLotsDoc() { return S.lotsDocs.get(S.me) || null; }
 
   // ---------- writes ----------
   let chain = Promise.resolve();
   function queue(fn) { const p = chain.then(fn); chain = p.catch(() => {}); return p; }
-  async function writeDoc(path, body) {
-    const collection = path.split("/")[0];
-    try {
-      await api("doc/" + collection, { method: "PUT", body: { data: body } });
-      (collection === "lots" ? S.lotsDocs : S.bidsDocs).set(S.me, body);
-      render();
-      return true;
-    } catch (e) {
-      if (e.status !== 401) toast(e.status ? e.message : "Opslaan lukte niet. Controleer je verbinding en probeer het opnieuw.");
-      return false;
+  // Schrijft het eigen document. De server controleert alles en geeft de opgeslagen versie terug.
+  // Heeft iemand (of een ander tabblad) het intussen gewijzigd, dan halen we de nieuwe versie op
+  // en passen we de wijziging daar opnieuw op toe.
+  async function writeDoc(collection, mutate) {
+    for (let tryNo = 0; tryNo < 3; tryNo++) {
+      const map = collection === "lots" ? S.lotsDocs : S.bidsDocs; // na een volledige verversing is dit een nieuwe Map
+      const doc = clone(map.get(S.me) || (collection === "lots" ? { items: {} } : { offers: {} }));
+      if (collection === "lots") doc.items = doc.items || {}; else doc.offers = doc.offers || {};
+      mutate(doc);
+      try {
+        const r = await api("doc/" + collection, { method: "PUT", body: { data: doc, base: S.versions[collection + "/" + S.me] || 0 } });
+        map.set(S.me, r.data || doc);
+        S.versions[collection + "/" + S.me] = r.version;
+        render();
+        return true;
+      } catch (e) {
+        if (e.conflict && tryNo < 2) { await pull(true); continue; }
+        if (e.conflict) await pull(true);
+        if (e.status !== 401 && !e.mustChange) toast(e.status ? e.message : "Opslaan lukte niet. Controleer je verbinding en probeer het opnieuw.");
+        return false;
+      }
     }
+    return false;
   }
 
   // ---------- server ----------
   async function api(path, { method = "GET", body } = {}) {
     const headers = { "content-type": "application/json" };
-    if (S.token) headers.authorization = "Bearer " + S.token;
+    if (S.legacyToken) headers.authorization = "Bearer " + S.legacyToken; // eenmalig, van een oude versie; daarna een HttpOnly-cookie
     let res;
     try {
-      res = await fetch("/api/" + path, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+      res = await fetch("/api/" + path, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store", credentials: "same-origin" });
     } catch {
       throw Object.assign(new Error("Geen verbinding met de server."), { status: 0 });
     }
@@ -939,22 +971,25 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       signOutLocal();
       showLogin("Je sessie is verlopen. Log opnieuw in.");
     }
-    if (!res.ok) throw Object.assign(new Error(data.error || "Er ging iets mis (" + res.status + ")."), { status: res.status });
+    if (res.status === 403 && data.mustChange && S.user) openForceCode();
+    if (!res.ok) throw Object.assign(new Error(data.error || "Er ging iets mis (" + res.status + ")."), { status: res.status, conflict: !!data.conflict, mustChange: !!data.mustChange });
     return data || {};
   }
 
   let pollTimer = null;
-  async function pull() {
+  async function pull(full) {
     if (!S.token) return;
     try {
-      const since = S.lastNow ? new Date(Date.parse(S.lastNow) - 5000).toISOString() : "";
+      const since = S.lastNow && !full ? new Date(Date.parse(S.lastNow) - 5000).toISOString() : "";
       const d = await api("data" + (since ? "?since=" + encodeURIComponent(since) : ""));
       if (d.full) { S.lotsDocs = new Map(); S.bidsDocs = new Map(); }
       for (const doc of d.docs || []) {
         const map = doc.collection === "lots" ? S.lotsDocs : doc.collection === "bids" ? S.bidsDocs : null;
         if (!map) continue;
+        S.versions[doc.collection + "/" + doc.id] = doc.version || 0;
         if (doc.data === null) map.delete(doc.id); else map.set(doc.id, doc.data);
       }
+      if (d.market) S.market = d.market;
       if (d.profiles) S.profiles = d.profiles;
       if (S.view === "admin" && S.apane === "lots") setTimeout(renderAdminLots, 0);
       if (S.view === "admin" && S.apane === "stats" && (d.docs || []).length) setTimeout(renderStats, 0);
@@ -979,22 +1014,8 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   }
   function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.token) pull(); });
-  function saveMyLots(mutate) {
-    return queue(async () => {
-      const doc = clone(myLotsDoc() || { items: {} });
-      doc.items = doc.items || {};
-      mutate(doc);
-      return writeDoc("lots/" + S.me, doc);
-    });
-  }
-  function saveMyBids(mutate) {
-    return queue(async () => {
-      const doc = clone(myBidDoc() || { offers: {} });
-      doc.offers = doc.offers || {};
-      mutate(doc);
-      return writeDoc("bids/" + S.me, doc);
-    });
-  }
+  function saveMyLots(mutate) { return queue(() => writeDoc("lots", mutate)); }
+  function saveMyBids(mutate) { return queue(() => writeDoc("bids", mutate)); }
 
   // ---------- toast ----------
   let toastT;
@@ -1021,8 +1042,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
 
   function lotCard(l, { example = false } = {}) {
     const st = example ? { label: "Nog 3 dagen", cls: "ok", closed: false } : lotState(l);
-    const bids = example ? [] : bidsFor(l.id);
-    const top = bids[0];
+    const sum = example ? { top: 0, n: 0 } : bidSummary(l.id);
     const mine = !example && l.sellerId === S.me;
     const myOffer = !example && myBidDoc()?.offers?.[l.id];
     let action = "";
@@ -1035,7 +1055,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     }
 
     const bidLine = example ? `<div class="bidinfo">Hoogste bod <b>${euro.format(5.8)}</b> · 3 biedingen</div>`
-      : `<div class="bidinfo">${top ? `Hoogste bod <b>${euro.format(top.price)}</b> · ${bids.length} ${bids.length === 1 ? "bod" : "biedingen"}` : "Nog geen biedingen"}${myOffer ? ` · jouw bod <b>${euro.format(myOffer.price)}</b>` : ""}</div>`;
+      : `<div class="bidinfo">${sum.n ? `Hoogste bod <b>${euro.format(sum.top)}</b> · ${sum.n} ${sum.n === 1 ? "bod" : "biedingen"}` : "Nog geen biedingen"}${myOffer ? ` · jouw bod <b>${euro.format(myOffer.price)}</b>` : ""}</div>`;
 
     return `<article class="lot${st.closed ? " closed" : ""}">
       <div class="label-strip"><span class="cat"><span class="sw ${esc(l.category)}"></span>${esc(l.category)} · ${esc(l.klasse)}${l.origin ? " · " + esc(l.origin) : ""}</span>
@@ -1168,8 +1188,9 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     }
     box.innerHTML = `<div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Partij</th><th class="num">Jouw bod</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>
       ${items.map(({ lotId, o, l, status }) => {
-        const top = l ? bidsFor(lotId)[0] : null;
-        const winning = top && top.bidderId === S.me;
+        const sm = l ? bidSummary(lotId) : null;
+        const top = sm && sm.n ? { price: sm.top } : null;
+        const winning = top && o.price >= top.price;
         return `<tr>
           <td><b>${esc(l ? l.product : o.product || "Partij")}</b>${l ? `<div class="sub">${esc(l.company)}${l.contact ? " · " + esc(l.contact) : ""}</div>` : ""}</td>
           <td class="num">${euro.format(o.price)}${status.open && top ? `<div class="sub">${winning ? "Hoogste bod" : "Hoogste: " + euro.format(top.price)}</div>` : ""}</td>
@@ -1403,7 +1424,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     S.bidLot = l;
     const mine = myBidDoc()?.offers?.[lotId];
     const rem = l.remaining ?? l.qty;
-    const top = bidsFor(lotId)[0];
+    const sm = bidSummary(lotId), top = sm.n ? { price: sm.top } : null;
     $("#bid-sub").textContent = `${l.product}${l.ras ? " · " + l.ras : ""} — ${num.format(rem)} ${l.unit} van ${l.company}. Vraagprijs ${euro.format(l.price)}${top ? `, hoogste bod ${euro.format(top.price)}` : ""}.`;
     $("#b-price").value = mine ? mine.price : l.price;
     $("#b-qty").value = mine ? Math.min(mine.qty, rem) : rem;
@@ -1505,13 +1526,37 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   $("#sort").addEventListener("change", (e) => { S.sort = e.target.value; renderMarket(); });
   $("#show-closed").addEventListener("change", (e) => { S.showClosed = e.target.checked; renderMarket(); });
 
+  // ---------- verplicht nieuwe code ----------
+  const dlgForce = $("#dlg-forcecode");
+  dlgForce.addEventListener("cancel", (e) => e.preventDefault()); // niet wegklikken met Escape
+  function openForceCode() {
+    if (dlgForce.open) return;
+    ["#fc-cur", "#fc-new", "#fc-new2"].forEach((id) => ($(id).value = "")); $("#fc-err").textContent = "";
+    dlgForce.showModal(); $("#fc-cur").focus();
+  }
+  $("#form-forcecode").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const cur = $("#fc-cur").value, nw = $("#fc-new").value;
+    const err = !cur ? "Vul je huidige code in." : nw.length < 12 ? "De nieuwe code moet minstens 12 tekens hebben." : nw !== $("#fc-new2").value ? "De twee nieuwe codes zijn niet gelijk." : "";
+    if (err) { $("#fc-err").textContent = err; return; }
+    try {
+      const d = await api("me", { method: "PATCH", body: { currentCode: cur, newCode: nw } });
+      dlgForce.close(); enterApp(d.user); toast("Nieuwe code opgeslagen.");
+    } catch (ex) { $("#fc-err").textContent = ex.message; }
+  });
+  $("#fc-logout").addEventListener("click", async () => {
+    try { await api("logout", { method: "POST" }); } catch {}
+    dlgForce.close(); signOutLocal(); $("#user-box").hidden = true; showLogin("Je bent uitgelogd.");
+  });
+
   // ---------- login ----------
-  function setToken(t) { S.token = t || ""; try { t ? localStorage.setItem("rpb.token", t) : localStorage.removeItem("rpb.token"); } catch {} }
+  // De sessie zit in een HttpOnly-cookie die JavaScript niet kan lezen. S.token zegt alleen nog óf je bent ingelogd.
+  function setToken(on) { S.token = on ? "1" : ""; S.legacyToken = ""; try { localStorage.removeItem("rpb.token"); } catch {} }
   function signOutLocal() {
     stopPolling();
     setToken("");
     S.user = null; S.me = null; S.canWrite = null; S.ready = false; S.lastNow = "";
-    S.lotsDocs = new Map(); S.bidsDocs = new Map();
+    S.lotsDocs = new Map(); S.bidsDocs = new Map(); S.versions = {}; S.market = {};
   }
   function hideAllViews() { ["market", "mine", "bids", "admin"].forEach((v) => ($("#view-" + v).hidden = true)); $("#announce").hidden = true; $("#subbar").hidden = true; }
   async function showLogin(msg) {
@@ -1557,7 +1602,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       : !/^\d{8}$/.test(kvk) ? "Vul een KvK-nummer van 8 cijfers in."
       : !val("#r-phone") && !val("#r-email") ? "Vul een telefoonnummer of e-mailadres in."
       : !val("#r-name") ? "Vul je naam in."
-      : $("#r-code").value.length < 4 ? "Kies een code van minstens 4 tekens."
+      : $("#r-code").value.length < 12 ? "Kies een code van minstens 12 tekens. Een paar woorden achter elkaar werkt goed."
       : $("#r-code").value !== $("#r-code2").value ? "De twee codes zijn niet gelijk." : "";
     if (err) { $("#reg-err").textContent = err; return; }
     const btn = e.submitter; if (btn) btn.disabled = true;
@@ -1579,6 +1624,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
   });
   function enterApp(user) {
     S.user = user; S.me = user.id; S.canWrite = true;
+    if (user.mustChange) { document.body.classList.add("locked"); hideAllViews(); $("#view-login").hidden = true; openForceCode(); return; }
     document.body.classList.remove("locked");
     $("#user-box").hidden = false;
     $("#btn-account").textContent = user.name + (user.company ? " · " + user.company : "");
@@ -1601,17 +1647,18 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     $("#login-err").textContent = "";
     try {
       const d = await api("login", { method: "POST", body: { name, code } });
-      setToken(d.token); $("#l-code").value = "";
+      setToken(true); $("#l-code").value = "";
       enterApp(d.user);
     } catch (err) { $("#login-err").textContent = err.message; }
   });
   $("#form-setup").addEventListener("submit", async (e) => {
     e.preventDefault();
     const val = (id) => $(id).value.trim();
+    if ($("#s-code").value.length < 12) { $("#setup-err").textContent = "Kies een code van minstens 12 tekens."; return; }
     if ($("#s-code").value !== $("#s-code2").value) { $("#setup-err").textContent = "De twee codes zijn niet gelijk."; return; }
     try {
       const d = await api("setup", { method: "POST", body: { setupCode: val("#s-setup"), name: val("#s-name"), company: val("#s-company"), contact: val("#s-contact"), code: $("#s-code").value } });
-      setToken(d.token);
+      setToken(true);
       enterApp(d.user);
       toast("Beheerdersaccount aangemaakt. Maak nu de handelaren aan onder Beheer.");
     } catch (err) { $("#setup-err").textContent = err.message; }
@@ -1744,7 +1791,7 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
       $("#eu-err").textContent = ""; dlgEdit.showModal(); $("#eu-company").focus(); return;
     }
     if (t.dataset.uact === "code") {
-      codeFor = u; $("#code-sub").textContent = `Voor ${u.name}. Bestaande sessies worden uitgelogd.`;
+      codeFor = u; $("#code-sub").textContent = `Voor ${u.name}. Bestaande sessies worden uitgelogd. Bij het inloggen kiest ${u.name} zelf een nieuwe code.`;
       $("#c-code").value = ""; $("#code-err").textContent = ""; dlgCode.showModal(); return;
     }
     const body = t.dataset.uact === "role" ? { role: u.role === "beheerder" ? "handelaar" : "beheerder" }
@@ -2383,10 +2430,13 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
 
   // ---------- boot ----------
   (async () => {
-    try { S.token = localStorage.getItem("rpb.token") || ""; } catch {}
-    if (!S.token) { await showLogin(); handleRequestReturn(); return; }
-    try { const d = await api("me"); enterApp(d.user); }
-    catch (err) { if (err.status !== 401) showLogin(err.message); }
+    try { S.legacyToken = localStorage.getItem("rpb.token") || ""; } catch {}
+    try { const d = await api("me"); setToken(true); enterApp(d.user); }
+    catch (err) {
+      S.legacyToken = "";
+      if (err.status === 401 && !err.external) { await showLogin(); handleRequestReturn(); }
+      else showLogin(err.message);
+    }
   })();
 })();
 </script>
