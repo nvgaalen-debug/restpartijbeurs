@@ -68,6 +68,7 @@ async function ensureSchema() {
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS kvk TEXT NOT NULL DEFAULT ''");
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT ''");
+      await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS exempt BOOLEAN NOT NULL DEFAULT FALSE");
       await q(`CREATE TABLE IF NOT EXISTS rpb_sessions (
         token_hash TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -166,7 +167,7 @@ function validCode(code) {
 function publicUser(u) {
   return {
     id: u.id, name: u.name, company: u.company, contact: u.contact, role: u.role, active: u.active,
-    pending: !!u.pending, kvk: u.kvk || "", email: u.email || "", note: u.note || "",
+    pending: !!u.pending, kvk: u.kvk || "", email: u.email || "", note: u.note || "", exempt: !!u.exempt,
     createdAt: u.created_at ? new Date(u.created_at).toISOString() : null,
     ...(u.paid_until !== undefined ? { paidUntil: u.paid_until || null, paidTotal: Number(u.paid_total || 0) / 100 } : {}),
   };
@@ -196,7 +197,33 @@ const SETTING_DEFAULTS = {
   vatPercent: "21",
   payMethods: "ideal",             // Mollie-methoden, kommagescheiden; leeg = alles wat in Mollie aan staat
   autoApprovePaid: "false",        // aanvraag automatisch goedkeuren na online betaling
+  requireSubscription: "true",     // zonder geldig abonnement niet aanbieden/bieden
+  reasonCodes: JSON.stringify([    // redenen bij het intrekken van een advertentie
+    { code: "VERK", label: "Buiten het platform verkocht", active: true, needsNote: false },
+    { code: "KWAL", label: "Kwaliteit niet meer goed", active: true, needsNote: false },
+    { code: "HOUD", label: "Houdbaarheid verlopen", active: true, needsNote: false },
+    { code: "FOUT", label: "Fout in de advertentie", active: true, needsNote: false },
+    { code: "ANDR", label: "Anders", active: true, needsNote: true },
+  ]),
 };
+function parseReasons(v) {
+  try {
+    const arr = JSON.parse(v);
+    return Array.isArray(arr) ? arr.filter((r) => r && typeof r.code === "string").map((r) => ({
+      code: String(r.code).toUpperCase().slice(0, 10), label: String(r.label || "").slice(0, 80), active: r.active !== false, needsNote: !!r.needsNote,
+    })) : [];
+  } catch { return []; }
+}
+function cleanReason(input, codes, { required }) {
+  const code = typeof input?.code === "string" ? input.code.toUpperCase() : "";
+  const active = codes.filter((r) => r.active);
+  if (!code) { if (required && active.length) throw httpError(400, "Kies een reden voor het intrekken."); return null; }
+  const rc = codes.find((r) => r.code === code);
+  if (!rc || !rc.active) throw httpError(400, "Deze reden bestaat niet (meer). Kies een andere reden.");
+  const note = str(input.note, 300);
+  if (rc.needsNote && !note) throw httpError(400, `Licht de reden "${rc.label}" kort toe.`);
+  return { code: rc.code, label: rc.label, note, at: new Date().toISOString() };
+}
 const PAY_METHODS = ["ideal", "wero", "bancontact", "creditcard"];
 async function getSettings() {
   const r = await q("SELECT key, value FROM rpb_settings");
@@ -212,6 +239,8 @@ async function getSettings() {
     vatPercent: Number.isFinite(Number(s.vatPercent)) ? Number(s.vatPercent) : 21,
     payMethods: String(s.payMethods || "").split(",").map((x) => x.trim()).filter((x) => PAY_METHODS.includes(x)),
     autoApprovePaid: s.autoApprovePaid === "true",
+    requireSubscription: s.requireSubscription !== "false",
+    reasonCodes: parseReasons(s.reasonCodes),
     onlinePayment: !!process.env.MOLLIE_API_KEY,
     paymentTestMode: String(process.env.MOLLIE_API_KEY || "").startsWith("test_"),
   };
@@ -259,7 +288,7 @@ async function syncMollie(ref) {
       const t = today();
       const cur = await q("SELECT to_char(MAX(valid_until), 'YYYY-MM-DD') AS u FROM rpb_payments WHERE user_id = $1", [row.user_id]);
       const curUntil = cur.rows[0]?.u;
-      const start = curUntil && curUntil >= t ? addDay(curUntil) : t;
+      const start = curUntil && curUntil >= t ? curUntil : t; // vroeg verlengen: aansluiten op huidige einddatum
       validUntil = addYear(start);
       const label = { ideal: "iDEAL", wero: "Wero", bancontact: "Bancontact", creditcard: "creditcard" }[p.method] || p.method || "online";
       const note = `Online via ${label} (${row.mollie_id}), incl. btw € ${centsToValue(row.amount_incl).replace(".", ",")}`;
@@ -311,7 +340,31 @@ function addDay(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTC
 
 const today = () => new Date().toISOString().slice(0, 10);
 const validDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
-function addYear(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCFullYear(x.getUTCFullYear() + 1); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); }
+// Einddatum abonnement = datum + 12 maanden (29 februari wordt 28 februari)
+function addYear(d) {
+  const [y, m, day] = d.split("-").map(Number);
+  const last = new Date(Date.UTC(y + 1, m, 0)).getUTCDate();
+  return `${y + 1}-${String(m).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
+}
+
+// Mag deze gebruiker handelen (aanbieden, bieden, gunnen, foto's plaatsen)?
+async function subscriptionStatus(user) {
+  const s = await getSettings();
+  const r = await q("SELECT to_char(MAX(valid_until), 'YYYY-MM-DD') AS u FROM rpb_payments WHERE user_id = $1", [user.id]);
+  const paidUntil = r.rows[0]?.u || null;
+  const required = s.requireSubscription && s.subscriptionPrice > 0;
+  const exempt = user.role === "beheerder" || !!user.exempt;
+  const valid = !!paidUntil && paidUntil >= today();
+  return { paidUntil, required, exempt, valid, canTrade: !required || exempt || valid, settings: s };
+}
+async function requireTrade(user) {
+  const st = await subscriptionStatus(user);
+  if (!st.canTrade) {
+    throw httpError(402, st.paidUntil
+      ? `Je abonnement is verlopen op ${st.paidUntil.split("-").reverse().join("-")}. Betaal je abonnement om weer te kunnen aanbieden en bieden.`
+      : "Je hebt nog geen abonnement. Betaal je abonnement om te kunnen aanbieden en bieden.");
+  }
+}
 
 // Wijzigingen in partijen en biedingen omzetten naar regels voor het logboek
 function describeLots(prev, next, names) {
@@ -322,7 +375,10 @@ function describeLots(prev, next, names) {
     const old = a[id];
     if (!old) { out.push(["partij", `Partij aangeboden: ${label(it)}, ${it.qty} ${it.unit} à ${euro(it.price)}`]); continue; }
     let said = false;
-    if (old.status !== it.status && it.status === "ingetrokken") { out.push(["partij", `Partij ingetrokken: ${label(it)}`]); said = true; }
+    if (old.status !== it.status && it.status === "ingetrokken") {
+      const wr = it.withdrawReason;
+      out.push(["partij", `Partij ingetrokken: ${label(it)}${wr ? ` — reden ${wr.code} ${wr.label}${wr.note ? ": " + wr.note : ""}` : ""}`]); said = true;
+    }
     if (old.status === "ingetrokken" && it.status !== "ingetrokken") { out.push(["partij", `Partij heropend: ${label(it)}`]); said = true; }
     for (const [bidder, acc] of Object.entries(it.accepted || {})) {
       if (!(old.accepted || {})[bidder]) { out.push(["gunning", `Gegund: ${acc.qty} ${it.unit} ${label(it)} à ${euro(acc.price)} aan ${names[bidder] || "onbekend"}`]); said = true; }
@@ -554,14 +610,20 @@ async function route(req) {
 
   // Eigen abonnementsstatus
   if (a === "pay" && b === "me" && method === "GET") {
-    const r = await q("SELECT to_char(MAX(valid_until), 'YYYY-MM-DD') AS u FROM rpb_payments WHERE user_id = $1", [me.id]);
-    const s = await getSettings();
+    const st = await subscriptionStatus(me);
+    const s = st.settings;
     const incl = Math.round(s.subscriptionPrice * (1 + (s.vatPercent || 0) / 100));
-    return json(200, { paidUntil: r.rows[0]?.u || null, today: today(), priceExcl: s.subscriptionPrice / 100, priceIncl: incl / 100, onlinePayment: s.onlinePayment, testMode: s.paymentTestMode });
+    const renewFrom = st.valid ? st.paidUntil : today();
+    return json(200, {
+      paidUntil: st.paidUntil, today: today(), priceExcl: s.subscriptionPrice / 100, priceIncl: incl / 100,
+      onlinePayment: s.onlinePayment, testMode: s.paymentTestMode,
+      required: st.required, exempt: st.exempt, valid: st.valid, canTrade: st.canTrade, nextUntil: addYear(renewFrom),
+    });
   }
 
   // Foto opslaan: { thumb: "data:image/jpeg;base64,...", full: "data:image/jpeg;base64,..." }
   if (a === "photos" && !b && method === "POST") {
+    await requireTrade(me);
     const body = await readBody(req);
     const parse = (s, max, label) => {
       const m = typeof s === "string" && s.match(/^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
@@ -638,14 +700,29 @@ async function route(req) {
 
   // Eigen document schrijven: /api/doc/lots of /api/doc/bids
   if (a === "doc" && b && COLLECTIONS.has(b) && !c && method === "PUT") {
+    await requireTrade(me);
     const body = await readBody(req);
     const data = body.data;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw httpError(400, "Ongeldige gegevens.");
-    const text = JSON.stringify(data);
-    if (Buffer.byteLength(text) > MAX_DOC_BYTES) throw httpError(413, "Te veel gegevens in één keer. Trek oude partijen of biedingen in.");
     const now = new Date();
     const prevR = await q("SELECT data FROM rpb_docs WHERE collection = $1 AND id = $2", [b, me.id]);
     const prev = prevR.rows[0]?.data || null;
+    // Intrekken van een partij vraagt een geldige redencode
+    if (b === "lots") {
+      const codes = (await getSettings()).reasonCodes;
+      for (const [id, it] of Object.entries(data.items || {})) {
+        const old = prev?.items?.[id];
+        if (it && it.status === "ingetrokken" && (!old || old.status !== "ingetrokken")) {
+          it.withdrawReason = cleanReason(it.withdrawReason, codes, { required: true });
+        } else if (it && it.status !== "ingetrokken") {
+          delete it.withdrawReason;
+        } else if (it && old) {
+          it.withdrawReason = old.withdrawReason; // bestaande reden niet laten overschrijven
+        }
+      }
+    }
+    const text = JSON.stringify(data);
+    if (Buffer.byteLength(text) > MAX_DOC_BYTES) throw httpError(413, "Te veel gegevens in één keer. Trek oude partijen of biedingen in.");
     await q(
       `INSERT INTO rpb_docs (collection, id, data, updated_at, updated_by) VALUES ($1, $2, $3::jsonb, $4, $2)
        ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by`,
@@ -709,6 +786,11 @@ async function route(req) {
       await q("UPDATE rpb_users SET name = $2, name_key = $3 WHERE id = $1", [b, name, key]);
     }
     await q("UPDATE rpb_users SET role = $2, active = $3, company = $4, contact = $5 WHERE id = $1", [b, role, active, company, contact]);
+    const exempt = typeof body.exempt === "boolean" ? body.exempt : !!u.exempt;
+    if (exempt !== !!u.exempt) {
+      await q("UPDATE rpb_users SET exempt = $2 WHERE id = $1", [b, exempt]);
+      await log(me, "beheer", `${exempt ? "Vrijgesteld van abonnement" : "Vrijstelling abonnement ingetrokken"}: ${name}${company ? " (" + company + ")" : ""}`);
+    }
     if (body.code !== undefined) {
       validCode(body.code);
       const salt = crypto.randomBytes(16).toString("hex");
@@ -724,7 +806,7 @@ async function route(req) {
       const changed = [name !== u.name && "naam", company !== u.company && "bedrijf", contact !== u.contact && "contact", kvk !== u.kvk && "KvK"].filter(Boolean);
       if (changed.length) await log(me, "beheer", `Gegevens gewijzigd (${changed.join(", ")}): ${who}`);
     }
-    return json(200, { user: publicUser({ ...u, name, role, active, company, contact, kvk, pending }) });
+    return json(200, { user: publicUser({ ...u, name, role, active, company, contact, kvk, pending, exempt }) });
   }
 
   // Beheerder: aanvraag afwijzen (verwijdert alleen accounts die nog niet zijn goedgekeurd)
@@ -837,6 +919,7 @@ async function route(req) {
         vatPercent: String(Math.min(100, Math.max(0, Number(String(body.vatPercent ?? "21").replace(",", ".")) || 0))),
         payMethods: (Array.isArray(body.payMethods) ? body.payMethods : []).filter((x) => PAY_METHODS.includes(x)).join(","),
         autoApprovePaid: body.autoApprovePaid === true ? "true" : "false",
+        requireSubscription: body.requireSubscription === false ? "false" : "true",
       };
       for (const [k, v] of Object.entries(vals)) {
         await q("INSERT INTO rpb_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [k, v]);
@@ -858,8 +941,10 @@ async function route(req) {
       const label = `${it.product || "partij"}${it.ras ? " " + it.ras : ""}`;
       const nr = await q("SELECT name, company FROM rpb_users WHERE id = $1", [sellerId]);
       const owner = nr.rows[0] ? (nr.rows[0].company || nr.rows[0].name) : "onbekend";
-      if (action === "withdraw") { it.status = "ingetrokken"; }
-      else if (action === "reopen") { it.status = (it.remaining ?? it.qty) > 0 ? "open" : "verkocht"; }
+      const codes = (await getSettings()).reasonCodes;
+      const reason = action === "reopen" ? null : cleanReason(body.reason, codes, { required: true });
+      if (action === "withdraw") { it.status = "ingetrokken"; it.withdrawReason = { ...reason, by: "beheer" }; }
+      else if (action === "reopen") { it.status = (it.remaining ?? it.qty) > 0 ? "open" : "verkocht"; delete it.withdrawReason; }
       else if (action === "delete") {
         for (const p of Array.isArray(it.photos) ? it.photos : []) await q("DELETE FROM rpb_photos WHERE id = $1", [p]);
         delete doc.items[lotId];
@@ -867,8 +952,31 @@ async function route(req) {
       await q("UPDATE rpb_docs SET data = $2::jsonb, updated_at = $3, updated_by = $4 WHERE collection = 'lots' AND id = $1",
         [sellerId, JSON.stringify(doc), new Date(), me.id]);
       const verb = { withdraw: "ingetrokken", reopen: "heropend", delete: "verwijderd" }[action];
-      await log(me, "beheer", `Partij van ${owner} ${verb}: ${label}`);
+      await log(me, "beheer", `Partij van ${owner} ${verb}: ${label}${reason ? ` — reden ${reason.code} ${reason.label}${reason.note ? ": " + reason.note : ""}` : ""}`);
       return json(200, { ok: true });
+    }
+
+    // Redencodes beheren
+    if (b === "reasons" && method === "PUT") {
+      const body = await readBody(req);
+      const list = Array.isArray(body.codes) ? body.codes : [];
+      if (list.length > 50) throw httpError(400, "Maximaal 50 redencodes.");
+      const seen = new Set(), out = [];
+      for (const r of list) {
+        const code = str(r.code, 10).toUpperCase().replace(/\s+/g, "");
+        const label = str(r.label, 80);
+        if (!/^[A-Z0-9_-]{2,10}$/.test(code)) throw httpError(400, `Code "${code || "(leeg)"}" is ongeldig. Gebruik 2 tot 10 letters of cijfers.`);
+        if (!label) throw httpError(400, `Vul een omschrijving in bij code ${code}.`);
+        if (seen.has(code)) throw httpError(400, `Code ${code} komt twee keer voor.`);
+        seen.add(code);
+        out.push({ code, label, active: r.active !== false, needsNote: !!r.needsNote });
+      }
+      const before = (await getSettings()).reasonCodes;
+      await q("INSERT INTO rpb_settings (key, value) VALUES ('reasonCodes', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [JSON.stringify(out)]);
+      const added = out.filter((r) => !before.find((x) => x.code === r.code)).map((r) => r.code);
+      const removed = before.filter((r) => !out.find((x) => x.code === r.code)).map((r) => r.code);
+      await log(me, "beheer", `Redencodes bijgewerkt (${out.length} codes${added.length ? ", nieuw: " + added.join(", ") : ""}${removed.length ? ", verwijderd: " + removed.join(", ") : ""})`);
+      return json(200, { codes: out });
     }
   }
 
