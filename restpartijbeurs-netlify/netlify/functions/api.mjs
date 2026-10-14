@@ -7,9 +7,18 @@
 //   RPB_SETUP_CODE   Code om de eerste beheerder aan te maken         verplicht bij eerste start
 //   PG_SSL_CA        CA-certificaat van Aiven (aanbevolen)
 //   PG_SSL_INSECURE  "true" = certificaat niet controleren (verbinding blijft versleuteld)
+//   MOLLIE_API_KEY   Mollie-sleutel voor online betalen (test_... of live_...)
+//   PG_SCHEMA        Eigen schema in de database, bijv. "rpb_test" voor de testomgeving (leeg = standaard)
+//   APP_ENV          "test" = testomgeving: oranje balk "TESTOMGEVING" in de app; leegmaken toegestaan
+//   ALLOW_WIPE       "true" = leegmaken ook buiten de testomgeving toestaan (standaard uit)
+//   GMAIL_USER         Gmail-adres voor e-mail (code vergeten)          optioneel
+//   GMAIL_APP_PASSWORD App-wachtwoord van dat Google-account            nodig bij GMAIL_USER
+//   BREVO_API_KEY      Alternatief: Brevo-sleutel                       optioneel
+//   MAIL_FROM          Afzenderadres bij Brevo, bijv. noreply@jouwdomein.nl
 
 import pg from "pg";
 import crypto from "node:crypto";
+import tls from "node:tls";
 
 export const config = { path: "/api/*" };
 
@@ -27,6 +36,8 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
+// Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
+const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -40,7 +51,7 @@ function getPool() {
   else ssl = { rejectUnauthorized: true };
   // sslmode uit de URL halen, anders overschrijft pg onze ssl-instelling
   const clean = url.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
-  pool = new pg.Pool({ connectionString: clean, ssl, max: 3, idleTimeoutMillis: 10000 });
+  pool = new pg.Pool({ connectionString: clean, ssl, max: 3, idleTimeoutMillis: 10000, ...(PG_SCHEMA ? { options: `-c search_path=${PG_SCHEMA}` } : {}) });
   return pool;
 }
 
@@ -51,6 +62,7 @@ async function q(text, params = []) {
 async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
+      if (PG_SCHEMA) await q(`CREATE SCHEMA IF NOT EXISTS ${PG_SCHEMA}`);
       await q(`CREATE TABLE IF NOT EXISTS rpb_users (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -94,6 +106,18 @@ async function ensureSchema() {
         at TIMESTAMPTZ NOT NULL
       )`);
       await q("CREATE INDEX IF NOT EXISTS rpb_attempts_idx ON rpb_attempts (kind, ip, at)");
+      // Meldingen "code vergeten": de beheerder stelt een tijdelijke code in
+      await q(`CREATE TABLE IF NOT EXISTS rpb_resets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        contact TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL,
+        handled_at TIMESTAMPTZ,
+        handled_by TEXT
+      )`);
+      await q("ALTER TABLE rpb_resets ADD COLUMN IF NOT EXISTS token_hash TEXT");
+      await q("ALTER TABLE rpb_resets ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ");
       await q(`CREATE TABLE IF NOT EXISTS rpb_payments (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -306,8 +330,117 @@ async function getSettings() {
     reasonCodes: parseReasons(s.reasonCodes),
     onlinePayment: !!process.env.MOLLIE_API_KEY,
     paymentTestMode: String(process.env.MOLLIE_API_KEY || "").startsWith("test_"),
+    mailEnabled: mailEnabled(),
+    mailProvider: mailProvider(),
+    environment: process.env.APP_ENV === "test" ? "test" : "prod",
+    wipeAllowed: wipeAllowed(),
   };
 }
+
+// Leegmaken mag standaard alleen in de testomgeving
+function wipeAllowed() { return process.env.APP_ENV === "test" || process.env.ALLOW_WIPE === "true"; }
+const TRADE_TABLES = ["rpb_docs", "rpb_photos"];
+const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
+
+// ---------- e-mail: via Gmail (SMTP) of via Brevo ----------
+const MAIL_BASE = process.env.MAIL_API_BASE || "https://api.brevo.com/v3";
+const isEmail = (x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x || "");
+function mailProvider() {
+  if (isEmail(process.env.GMAIL_USER) && process.env.GMAIL_APP_PASSWORD) return "gmail";
+  if (process.env.BREVO_API_KEY && isEmail(process.env.MAIL_FROM)) return "brevo";
+  return "";
+}
+function mailEnabled() { return !!mailProvider(); }
+function mailFromAddress() { return mailProvider() === "gmail" ? process.env.GMAIL_USER : process.env.MAIL_FROM; }
+
+// Eenvoudige SMTP-client (TLS op poort 465), zonder extra pakketten
+const b64 = (t) => Buffer.from(String(t), "utf8").toString("base64");
+const wrap76 = (t) => t.replace(/.{1,76}/g, "$&\r\n");
+const encWord = (t) => (/^[\x20-\x7e]*$/.test(t) ? t : `=?UTF-8?B?${b64(t)}?=`);
+function smtpSend({ host, port, user, pass, from, fromName, to, subject, text, html }) {
+  return new Promise((resolve, reject) => {
+    const sock = tls.connect({ host, port, servername: host, rejectUnauthorized: process.env.MAIL_SMTP_INSECURE !== "true" });
+    sock.setTimeout(15000, () => { sock.destroy(); reject(httpError(502, "De mailserver reageert niet.")); });
+    let buf = "", waiter = null;
+    sock.setEncoding("utf8");
+    sock.on("data", (d) => {
+      buf += d;
+      const lines = buf.split("\r\n");
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (/^\d{3} /.test(lines[i])) { const reply = lines.slice(0, i + 1).join("\n"); buf = lines.slice(i + 1).join("\r\n"); const w = waiter; waiter = null; if (w) w(reply); return; }
+      }
+    });
+    sock.on("error", (e) => { console.error("smtp", e); reject(httpError(502, "De mailserver is niet bereikbaar.")); });
+    const read = () => new Promise((r) => (waiter = r));
+    const step = async (cmd, ok) => {
+      if (cmd !== null) sock.write(cmd + "\r\n");
+      const reply = await read();
+      if (!String(reply).startsWith(String(ok))) {
+        const code = reply.slice(0, 3);
+        throw httpError(502, code === "535" ? "Gmail weigerde het inloggen. Controleer GMAIL_USER en het app-wachtwoord." : "De mailserver weigerde het bericht (" + reply.slice(0, 120).replace(/\s+/g, " ") + ").");
+      }
+      return reply;
+    };
+    const boundary = "rpb" + crypto.randomBytes(8).toString("hex");
+    const msg = [
+      `From: ${encWord(fromName)} <${from}>`, `To: <${to}>`, `Subject: ${encWord(subject)}`,
+      `Date: ${new Date().toUTCString()}`, `Message-ID: <${crypto.randomBytes(12).toString("hex")}@${from.split("@")[1]}>`,
+      "MIME-Version: 1.0", `Content-Type: multipart/alternative; boundary="${boundary}"`, "",
+      `--${boundary}`, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap76(b64(text)),
+      `--${boundary}`, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", wrap76(b64(html)),
+      `--${boundary}--`, "",
+    ].join("\r\n");
+    (async () => {
+      await step(null, 220);
+      await step("EHLO restpartijbeurs", 250);
+      await step("AUTH PLAIN " + Buffer.from(`\0${user}\0${pass}`).toString("base64"), 235);
+      await step(`MAIL FROM:<${from}>`, 250);
+      await step(`RCPT TO:<${to}>`, 250);
+      await step("DATA", 354);
+      await step(msg + "\r\n.", 250);
+      sock.write("QUIT\r\n"); sock.end();
+      resolve();
+    })().catch((e) => { sock.destroy(); reject(e); });
+  });
+}
+const escHtml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+async function sendMail({ to, toName, subject, text, html }) {
+  const provider = mailProvider();
+  if (!provider) throw httpError(503, "E-mail is nog niet ingesteld (GMAIL_USER en GMAIL_APP_PASSWORD in Netlify).");
+  if (/[\r\n<>]/.test(to)) throw httpError(400, "Ongeldig e-mailadres.");
+  const siteName = (await getSettings()).siteName;
+  if (provider === "gmail") {
+    return smtpSend({
+      host: process.env.MAIL_SMTP_HOST || "smtp.gmail.com", port: Number(process.env.MAIL_SMTP_PORT) || 465,
+      user: process.env.GMAIL_USER, pass: String(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, ""),
+      from: process.env.GMAIL_USER, fromName: process.env.MAIL_FROM_NAME || siteName, to, subject, text, html,
+    });
+  }
+  let res;
+  try {
+    res = await fetch(MAIL_BASE + "/smtp/email", {
+      method: "POST",
+      headers: { "api-key": process.env.BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sender: { email: process.env.MAIL_FROM, name: process.env.MAIL_FROM_NAME || siteName },
+        to: [{ email: to, ...(toName ? { name: toName } : {}) }],
+        subject, textContent: text, htmlContent: html,
+      }),
+    });
+  } catch (e) { console.error("mail", e); throw httpError(502, "De e-maildienst is niet bereikbaar."); }
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    console.error("mail", res.status, d);
+    throw httpError(502, "De e-maildienst weigerde het bericht: " + (d.message || res.status));
+  }
+}
+// E-mailadres dat bij het account hoort: het e-mailveld, anders een adres in het contactveld
+function accountEmail(u) {
+  if (validEmail(u.email || "")) return u.email;
+  const m = String(u.contact || "").match(/[^\s@\/,;]+@[^\s@\/,;]+\.[^\s@\/,;]+/);
+  return m ? m[0] : "";
+}
+const RESET_MINUTES = 60;
 
 // ---------- Mollie ----------
 const MOLLIE_BASE = process.env.MOLLIE_API_BASE || "https://api.mollie.com/v2";
@@ -774,6 +907,79 @@ async function route(req) {
     return json(200, st);
   }
 
+  // Code vergeten (zonder login). Het antwoord is altijd hetzelfde, zodat niemand
+  // kan uitproberen welke namen bestaan. De beheerder ziet de melding onder Gebruikers.
+  if (a === "forgot" && method === "POST") {
+    const body = await readBody(req);
+    const done = { ok: true };
+    if (str(body.website, 200)) return json(200, done); // honeypot
+    await throttle("forgot", ip, 5, 60, "Er zijn vanaf dit netwerk al meerdere meldingen gedaan. Probeer het over een uur opnieuw of neem contact op met de beheerder.");
+    await attempt("forgot", ip);
+    const contact = str(body.contact, 120), note = str(body.note, 300);
+    if (!contact && !mailEnabled()) throw httpError(400, "Vul in hoe de beheerder je kan bereiken.");
+    const r = await q("SELECT id, name, company, active, pending, email, contact FROM rpb_users WHERE name_key = $1", [nameKey(str(body.name, 60))]);
+    const u = r.rows[0];
+    // Met e-mail: een resetlink naar het adres dat al bij het account hoort (nooit naar een ingetypt adres)
+    const to = u && u.active && !u.pending && mailEnabled() ? accountEmail(u) : "";
+    if (to) {
+      const recent = await q("SELECT COUNT(*)::int AS n FROM rpb_resets WHERE user_id = $1 AND token_hash IS NOT NULL AND created_at > $2", [u.id, new Date(Date.now() - 3600000)]);
+      if (Number(recent.rows[0].n) >= 3) return json(200, done); // maximaal 3 mails per uur per account
+      const token = crypto.randomBytes(32).toString("hex");
+      await q("UPDATE rpb_resets SET handled_at = $2 WHERE user_id = $1 AND token_hash IS NOT NULL AND handled_at IS NULL", [u.id, new Date()]); // oude links ongeldig
+      await q("INSERT INTO rpb_resets (id, user_id, contact, note, created_at, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        [newId("r"), u.id, to, "", new Date(), sha256(token), new Date(Date.now() + RESET_MINUTES * 60000)]);
+      const s = await getSettings();
+      const link = `${siteUrl(req)}/?herstel=${token}`;
+      try {
+        await sendMail({
+          to, toName: u.name, subject: `${s.siteName}: nieuwe code instellen`,
+          text: `Hallo ${u.name},\n\nJe hebt gevraagd om een nieuwe code voor ${s.siteName}. Open binnen ${RESET_MINUTES} minuten deze link om een nieuwe code te kiezen:\n\n${link}\n\nHeb je dit niet zelf gevraagd? Dan kun je deze e-mail negeren; je huidige code blijft gewoon werken.\n`,
+          html: `<p>Hallo ${escHtml(u.name)},</p><p>Je hebt gevraagd om een nieuwe code voor ${escHtml(s.siteName)}. Klik binnen ${RESET_MINUTES} minuten op de knop om een nieuwe code te kiezen.</p>
+<p><a href="${link}" style="display:inline-block;background:#a3204f;color:#ffffff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Nieuwe code kiezen</a></p>
+<p style="color:#666666;font-size:13px">Werkt de knop niet? Kopieer dan deze link: ${link}</p>
+<p style="color:#666666;font-size:13px">Heb je dit niet zelf gevraagd? Dan kun je deze e-mail negeren; je huidige code blijft gewoon werken.</p>`,
+        });
+        await log(u, "account", "Resetlink voor nieuwe code gemaild");
+        return json(200, done);
+      } catch (e) {
+        console.error("reset mail", e);
+        await log(u, "account", "Resetlink mailen mislukt; melding naar beheerder");
+      }
+    }
+    if (u && u.active && !u.pending) {
+      const open = await q("SELECT id FROM rpb_resets WHERE user_id = $1 AND handled_at IS NULL AND token_hash IS NULL", [u.id]);
+      if (open.rows[0]) await q("UPDATE rpb_resets SET contact = $2, note = $3, created_at = $4 WHERE id = $1", [open.rows[0].id, contact, note, new Date()]);
+      else {
+        const n = await q("SELECT COUNT(*)::int AS n FROM rpb_resets WHERE handled_at IS NULL AND token_hash IS NULL");
+        if (Number(n.rows[0].n) < 100) await q("INSERT INTO rpb_resets (id, user_id, contact, note, created_at) VALUES ($1, $2, $3, $4, $5)", [newId("r"), u.id, contact, note, new Date()]);
+      }
+      await log(u, "account", `Code vergeten gemeld (bereikbaar via ${contact})`);
+    }
+    return json(200, done);
+  }
+
+  // Nieuwe code instellen met de link uit de e-mail
+  if (a === "reset" && method === "POST") {
+    const body = await readBody(req);
+    await throttle("reset", ip, 20, 15);
+    const token = str(body.token, 100);
+    const bad = () => httpError(400, "Deze link is verlopen of al gebruikt. Vraag via 'Code vergeten?' een nieuwe aan.");
+    if (!/^[a-f0-9]{64}$/.test(token)) { await attempt("reset", ip); throw bad(); }
+    const r = await q("SELECT id, user_id FROM rpb_resets WHERE token_hash = $1 AND handled_at IS NULL AND expires_at > $2", [sha256(token), new Date()]);
+    const row = r.rows[0];
+    if (!row) { await attempt("reset", ip); throw bad(); }
+    const ur = await q("SELECT * FROM rpb_users WHERE id = $1", [row.user_id]);
+    const u = ur.rows[0];
+    if (!u || !u.active || u.pending) throw bad();
+    validCode(body.code);
+    const salt = crypto.randomBytes(16).toString("hex");
+    await q("UPDATE rpb_users SET salt = $2, hash = $3, failed = 0, locked_until = NULL, must_change = FALSE WHERE id = $1", [u.id, salt, hashCode(body.code, salt)]);
+    await q("UPDATE rpb_resets SET handled_at = $2, handled_by = $3 WHERE user_id = $1 AND handled_at IS NULL", [u.id, new Date(), u.id]);
+    await q("DELETE FROM rpb_sessions WHERE user_id = $1", [u.id]); // overal uitloggen
+    await log(u, "account", "Nieuwe code ingesteld via e-maillink");
+    return json(200, { ok: true, name: u.name });
+  }
+
   // Inloggen
   if (a === "login" && method === "POST") {
     const body = await readBody(req);
@@ -974,6 +1180,8 @@ async function route(req) {
     if (me.role === "beheerder") {
       const pc = await q("SELECT COUNT(*)::int AS n FROM rpb_users WHERE pending = TRUE");
       pendingCount = Number(pc.rows[0].n);
+      const rc = await q("SELECT COUNT(*)::int AS n FROM rpb_resets WHERE handled_at IS NULL AND token_hash IS NULL");
+      pendingCount += Number(rc.rows[0].n);
     }
     return json(200, { now: now.toISOString(), full: !since, docs, market, profiles, pendingCount });
   }
@@ -1066,6 +1274,7 @@ async function route(req) {
       validCode(body.code);
       const salt = crypto.randomBytes(16).toString("hex");
       await q("UPDATE rpb_users SET salt = $2, hash = $3, failed = 0, locked_until = NULL, must_change = TRUE WHERE id = $1", [b, salt, hashCode(body.code, salt)]);
+      await q("UPDATE rpb_resets SET handled_at = $2, handled_by = $3 WHERE user_id = $1 AND handled_at IS NULL", [b, new Date(), me.id]);
     }
     if (!active || body.code !== undefined) await q("DELETE FROM rpb_sessions WHERE user_id = $1", [b]);
     const who = `${name}${company ? " (" + company + ")" : ""}`;
@@ -1160,6 +1369,57 @@ async function route(req) {
       if (r.rows[0]) {
         await q("DELETE FROM rpb_payments WHERE id = $1", [c]);
         await log(me, "betaling", `Betaling verwijderd: ${euro(Number(r.rows[0].amount_cents) / 100)} van ${r.rows[0].name || "onbekend"}`);
+      }
+      return json(200, { ok: true });
+    }
+
+    // Omgeving leegmaken: "trade" = partijen, biedingen en foto's; "all" = alles, terug naar de eerste beheerder
+    if (b === "wipe" && method === "POST") {
+      if (!wipeAllowed()) throw httpError(403, "Leegmaken staat uit. Zet in Netlify ALLOW_WIPE op true en doe een nieuwe deploy (of gebruik de testomgeving).");
+      const body = await readBody(req);
+      await throttle("wipe", ip, 5, 15);
+      const scope = body.scope === "all" ? "all" : body.scope === "trade" ? "trade" : "";
+      if (!scope) throw httpError(400, "Kies wat je wilt leegmaken.");
+      if (str(body.confirm, 20) !== "LEEGMAKEN") throw httpError(400, "Typ LEEGMAKEN in hoofdletters ter bevestiging.");
+      const expected = process.env.RPB_SETUP_CODE || "", given = str(body.setupCode, 200);
+      const okCode = !!expected && given.length === expected.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+      if (!okCode) { await attempt("wipe", ip); throw httpError(403, "De installatiecode klopt niet."); }
+      const counts = {};
+      for (const t of scope === "all" ? ALL_TABLES : TRADE_TABLES) {
+        const r = await q(`SELECT COUNT(*)::int AS n FROM ${t}`);
+        counts[t] = Number(r.rows[0].n);
+        await q(`DELETE FROM ${t}`);
+      }
+      console.log("wipe", scope, PG_SCHEMA || "public", counts);
+      if (scope === "trade") {
+        await log(me, "beheer", `Omgeving leeggemaakt: ${counts.rpb_docs} documenten met partijen en biedingen en ${counts.rpb_photos} foto's verwijderd`);
+        return json(200, { ok: true, scope, counts });
+      }
+      return json(200, { ok: true, scope, counts }, { "set-cookie": sessionCookie(req, "") });
+    }
+
+    // Testmail om de koppeling met Brevo te controleren
+    if (b === "testmail" && method === "POST") {
+      const body = await readBody(req);
+      const to = str(body.to, 120) || accountEmail(me);
+      if (!validEmail(to)) throw httpError(400, "Vul een geldig e-mailadres in.");
+      const s = await getSettings();
+      await sendMail({ to, subject: `${s.siteName}: testmail`, text: `Dit is een testmail van ${s.siteName}. De e-mailkoppeling werkt.`, html: `<p>Dit is een testmail van ${escHtml(s.siteName)}. De e-mailkoppeling werkt.</p>` });
+      await log(me, "beheer", `Testmail verstuurd naar ${to}`);
+      return json(200, { ok: true, to });
+    }
+
+    // Meldingen "code vergeten"
+    if (b === "resets" && !c && method === "GET") {
+      const r = await q(`SELECT r.id, r.user_id, r.contact, r.note, r.created_at, u.name, u.company, u.contact AS known
+        FROM rpb_resets r JOIN rpb_users u ON u.id = r.user_id WHERE r.handled_at IS NULL AND r.token_hash IS NULL ORDER BY r.created_at`);
+      return json(200, { resets: r.rows.map((x) => ({ id: x.id, userId: x.user_id, name: x.name, company: x.company, contact: x.contact, note: x.note, known: x.known, at: new Date(x.created_at).toISOString() })) });
+    }
+    if (b === "resets" && c && method === "DELETE") {
+      const r = await q("SELECT r.user_id, u.name, u.company FROM rpb_resets r LEFT JOIN rpb_users u ON u.id = r.user_id WHERE r.id = $1 AND r.handled_at IS NULL", [c]);
+      if (r.rows[0]) {
+        await q("UPDATE rpb_resets SET handled_at = $2, handled_by = $3 WHERE id = $1", [c, new Date(), me.id]);
+        await log(me, "beheer", `Melding code vergeten afgesloten zonder nieuwe code: ${r.rows[0].name || "onbekend"}`);
       }
       return json(200, { ok: true });
     }
