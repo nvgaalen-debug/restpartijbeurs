@@ -20,7 +20,9 @@ const MAX_THUMB_BYTES = 60 * 1024;   // miniatuur
 const MAX_PHOTOS_PER_USER = 300;
 const SESSION_DAYS = 30;
 const MAX_FAILED = 5;
-const LOCK_MINUTES = 2;
+const LOCK_MINUTES = 15;
+const MIN_CODE = 12;                 // minimale lengte van een code (wachtwoord)
+const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar voor JavaScript)
 
 // ---------- database ----------
 let pool = null;
@@ -69,6 +71,7 @@ async function ensureSchema() {
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT ''");
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS exempt BOOLEAN NOT NULL DEFAULT FALSE");
+      await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS must_change BOOLEAN NOT NULL DEFAULT FALSE");
       await q(`CREATE TABLE IF NOT EXISTS rpb_sessions (
         token_hash TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -82,6 +85,15 @@ async function ensureSchema() {
         updated_by TEXT NOT NULL,
         PRIMARY KEY (collection, id)
       )`);
+      // Versienummer per document: een wijziging lukt alleen op de versie die je hebt gelezen
+      await q("ALTER TABLE rpb_docs ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0");
+      // Pogingen per netwerkadres (inloggen, aanmelden), tegen het raden van codes
+      await q(`CREATE TABLE IF NOT EXISTS rpb_attempts (
+        kind TEXT NOT NULL,
+        ip TEXT NOT NULL,
+        at TIMESTAMPTZ NOT NULL
+      )`);
+      await q("CREATE INDEX IF NOT EXISTS rpb_attempts_idx ON rpb_attempts (kind, ip, at)");
       await q(`CREATE TABLE IF NOT EXISTS rpb_payments (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -131,13 +143,55 @@ async function ensureSchema() {
 }
 
 // ---------- helpers ----------
-function httpError(status, message) { const e = new Error(message); e.status = status; return e; }
+function httpError(status, message, extra) { const e = new Error(message); e.status = status; e.extra = extra; return e; }
+const conflict = () => httpError(409, "Deze gegevens zijn net ergens anders gewijzigd. Probeer het opnieuw.", { conflict: true });
 
-function json(status, body) {
+function json(status, body, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extraHeaders },
   });
+}
+
+// ---------- sessiecookie ----------
+function sessionCookie(req, token) {
+  const secure = new URL(req.url).protocol === "https:" ? "; Secure" : "";
+  return token
+    ? `${COOKIE}=${token}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}${secure}`
+    : `${COOKIE}=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0${secure}`;
+}
+function tokenFrom(req) {
+  const m = (req.headers.get("cookie") || "").match(new RegExp(`(?:^|;\\s*)${COOKIE}=([a-f0-9]{64})`));
+  if (m) return { token: m[1], via: "cookie" };
+  const h = (req.headers.get("authorization") || "").match(/^Bearer ([a-f0-9]{64})$/); // oude versie van de app
+  if (h) return { token: h[1], via: "bearer" };
+  return null;
+}
+// Wijzigingen alleen vanaf onze eigen website (extra slot naast SameSite=Strict)
+function checkOrigin(req) {
+  const origin = req.headers.get("origin");
+  if (!origin) return;
+  let host = "";
+  try { host = new URL(origin).host; } catch {}
+  const allowed = new Set([new URL(req.url).host, req.headers.get("host") || ""]);
+  if (process.env.URL) try { allowed.add(new URL(process.env.URL).host); } catch {}
+  if (!allowed.has(host)) throw httpError(403, "Verzoek van een andere website geweigerd.");
+}
+
+// ---------- pogingen per netwerkadres ----------
+function clientIp(req) {
+  return req.headers.get("x-nf-client-connection-ip")
+    || (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
+    || "onbekend";
+}
+async function throttle(kind, ip, limit, minutes, msg) {
+  const r = await q("SELECT COUNT(*)::int AS n FROM rpb_attempts WHERE kind = $1 AND ip = $2 AND at > $3",
+    [kind, ip, new Date(Date.now() - minutes * 60000)]);
+  if (Number(r.rows[0].n) >= limit) throw httpError(429, msg || `Te veel pogingen vanaf dit netwerk. Probeer het over ${minutes} minuten opnieuw.`);
+}
+async function attempt(kind, ip) {
+  await q("INSERT INTO rpb_attempts (kind, ip, at) VALUES ($1, $2, $3)", [kind, ip, new Date()]);
+  if (Math.random() < 0.05) await q("DELETE FROM rpb_attempts WHERE at < $1", [new Date(Date.now() - 86400000)]);
 }
 
 async function readBody(req) {
@@ -158,9 +212,17 @@ function checkCode(code, salt, hash) {
   const b = Buffer.from(hash, "hex");
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+const WEAK_CODES = new Set(["wachtwoord123", "welkom123456", "password1234", "123456789012", "qwertyuiopas",
+  "restpartijbeurs", "restpartijen", "aardappelen", "groenteenfruit", "wachtwoord1234", "welkom1234567"]);
 function validCode(code) {
-  if (typeof code !== "string" || code.length < 4) throw httpError(400, "De code moet minstens 4 tekens hebben.");
+  if (typeof code !== "string" || code.length < MIN_CODE) {
+    throw httpError(400, `De code moet minstens ${MIN_CODE} tekens hebben. Tip: een paar woorden achter elkaar, zoals "rode appels in de kist".`);
+  }
   if (code.length > 100) throw httpError(400, "De code is te lang.");
+  const low = code.toLowerCase();
+  if (WEAK_CODES.has(low) || /^(.)\1+$/.test(code) || "01234567890123456789".includes(code) || "abcdefghijklmnopqrstuvwxyz".includes(low)) {
+    throw httpError(400, "Deze code is te makkelijk te raden. Kies een andere.");
+  }
   return code;
 }
 
@@ -168,6 +230,7 @@ function publicUser(u) {
   return {
     id: u.id, name: u.name, company: u.company, contact: u.contact, role: u.role, active: u.active,
     pending: !!u.pending, kvk: u.kvk || "", email: u.email || "", note: u.note || "", exempt: !!u.exempt,
+    mustChange: !!u.must_change,
     createdAt: u.created_at ? new Date(u.created_at).toISOString() : null,
     ...(u.paid_until !== undefined ? { paidUntil: u.paid_until || null, paidTotal: Number(u.paid_total || 0) / 100 } : {}),
   };
@@ -415,16 +478,16 @@ async function createSession(userId) {
 }
 
 async function auth(req) {
-  const h = req.headers.get("authorization") || "";
-  const m = h.match(/^Bearer ([a-f0-9]{64})$/);
-  if (!m) throw httpError(401, "Log opnieuw in.");
+  const t = tokenFrom(req);
+  if (!t) throw httpError(401, "Log opnieuw in.");
   const r = await q(
     `SELECT u.* FROM rpb_sessions s JOIN rpb_users u ON u.id = s.user_id
      WHERE s.token_hash = $1 AND s.expires_at > $2`,
-    [sha256(m[1]), new Date()]
+    [sha256(t.token), new Date()]
   );
   const u = r.rows[0];
   if (!u || !u.active) throw httpError(401, "Log opnieuw in.");
+  u._token = t.token; u._via = t.via;
   return u;
 }
 
@@ -442,7 +505,7 @@ async function activeAdmins() {
   return Number(r.rows[0].n);
 }
 
-async function insertUser({ name, company, contact, code, role, pending = false, kvk = "", email = "", note = "" }) {
+async function insertUser({ name, company, contact, code, role, pending = false, kvk = "", email = "", note = "", mustChange = false }) {
   name = str(name, 60);
   if (!name) throw httpError(400, "Vul een naam in.");
   validCode(code);
@@ -456,12 +519,181 @@ async function insertUser({ name, company, contact, code, role, pending = false,
     pending: !!pending, kvk: str(kvk, 8), email: str(email, 120), note: str(note, 500),
   };
   await q(
-    `INSERT INTO rpb_users (id, name, name_key, company, contact, role, active, salt, hash, failed, created_at, pending, kvk, email, note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12, $13, $14)`,
+    `INSERT INTO rpb_users (id, name, name_key, company, contact, role, active, salt, hash, failed, created_at, pending, kvk, email, note, must_change)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12, $13, $14, $15)`,
     [user.id, user.name, key, user.company, user.contact, user.role, user.active, salt, hashCode(code, salt), new Date(),
-     user.pending, user.kvk, user.email, user.note]
+     user.pending, user.kvk, user.email, user.note, !!mustChange]
   );
-  return publicUser({ ...user, created_at: new Date() });
+  return publicUser({ ...user, must_change: !!mustChange, created_at: new Date() });
+}
+
+
+// ---------- documenten: lezen met versie, schrijven alleen op die versie ----------
+async function readDoc(collection, id) {
+  const r = await q("SELECT data, version FROM rpb_docs WHERE collection = $1 AND id = $2", [collection, id]);
+  const row = r.rows[0];
+  return row ? { data: row.data || null, version: Number(row.version) || 0, exists: true } : { data: null, version: 0, exists: false };
+}
+// Schrijft alleen als niemand het document intussen heeft gewijzigd; anders null.
+async function writeDocAt(collection, id, cur, data, by) {
+  const text = data === null ? null : JSON.stringify(data);
+  const now = new Date();
+  const r = cur.exists
+    ? await q(`UPDATE rpb_docs SET data = $3::jsonb, updated_at = $4, updated_by = $5, version = version + 1
+        WHERE collection = $1 AND id = $2 AND version = $6 RETURNING version`, [collection, id, text, now, by, cur.version])
+    : await q(`INSERT INTO rpb_docs (collection, id, data, updated_at, updated_by, version) VALUES ($1, $2, $3::jsonb, $4, $5, 1)
+        ON CONFLICT (collection, id) DO NOTHING RETURNING version`, [collection, id, text, now, by]);
+  return r.rows[0] ? { version: Number(r.rows[0].version), at: now } : null;
+}
+
+// ---------- controle van partijen (door de server, niet door de browser) ----------
+const LOT_TEXT = { product: 80, ras: 80, category: 40, klasse: 40, origin: 60, location: 80, unit: 20, pack: 120, note: 1000, company: 120, contact: 120 };
+const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v.replace(",", ".")) : NaN);
+const isoOr = (v, d) => (typeof v === "string" && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : d);
+const sumQty = (acc) => Object.values(acc || {}).reduce((s, a) => s + (Number(a?.qty) || 0), 0);
+
+async function normalizeLots(me, prev, data) {
+  const raw = data.items && typeof data.items === "object" && !Array.isArray(data.items) ? data.items : {};
+  const ids = Object.keys(raw);
+  if (ids.length > 1000) throw httpError(413, "Te veel partijen in één keer.");
+  const old = prev?.items || {};
+  const nowIso = new Date().toISOString();
+  const codes = (await getSettings()).reasonCodes;
+  const pr = await q("SELECT id, created_at FROM rpb_photos WHERE owner = $1", [me.id]);
+  const ownPhotos = new Map(pr.rows.map((r) => [r.id, new Date(r.created_at)]));
+  const bidDocs = new Map();
+  const offerOf = async (bidder, lotId) => {
+    if (!bidDocs.has(bidder)) bidDocs.set(bidder, (await readDoc("bids", bidder)).data);
+    return bidDocs.get(bidder)?.offers?.[lotId] || null;
+  };
+  const items = {};
+  for (const id of ids) {
+    const it0 = raw[id], was = old[id];
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || !it0 || typeof it0 !== "object" || Array.isArray(it0)) throw httpError(400, "Ongeldige partij.");
+    const it = {};
+    for (const [k, max] of Object.entries(LOT_TEXT)) it[k] = str(it0[k], max);
+    const name = it.product || "partij";
+    if (!it.product) throw httpError(400, "Vul bij elke partij een product in.");
+    it.qty = num(it0.qty);
+    if (!(it.qty > 0 && it.qty <= 1e7)) throw httpError(400, `Ongeldige hoeveelheid bij ${name}.`);
+    it.price = num(it0.price);
+    if (!(it.price >= 0 && it.price <= 1e6)) throw httpError(400, `Ongeldige prijs bij ${name}.`);
+    const minQty = num(it0.minQty);
+    it.minQty = minQty > 0 ? Math.min(minQty, it.qty) : null;
+    const kg = num(it0.kgPerUnit);
+    it.kgPerUnit = kg > 0 && kg <= 100000 ? kg : null;
+    it.until = validDate(it0.until) ? it0.until : "";
+    // Foto's: alleen eigen foto's, maximaal 3
+    const photos = Array.isArray(it0.photos) ? it0.photos.filter((x) => typeof x === "string").slice(0, 3) : [];
+    for (const ph of photos) if (!ownPhotos.has(ph) && !(was?.photos || []).includes(ph)) throw httpError(403, "Je kunt alleen je eigen foto's gebruiken.");
+    it.photos = photos;
+    it.createdAt = was?.createdAt || nowIso;
+    it.updatedAt = isoOr(it0.updatedAt, nowIso);
+
+    // Gunningen: bestaande blijven precies zoals ze zijn, nieuwe controleert de server zelf
+    const accepted = { ...(was?.accepted || {}) };
+    let sold = sumQty(accepted);
+    const wantsWithdraw = it0.status === "ingetrokken";
+    for (const bidder of Object.keys(it0.accepted && typeof it0.accepted === "object" ? it0.accepted : {})) {
+      if (accepted[bidder]) continue;
+      if (bidder === me.id) throw httpError(400, "Je kunt niet aan jezelf gunnen.");
+      if (wantsWithdraw || was?.status === "ingetrokken") throw httpError(409, "Een ingetrokken partij kun je niet gunnen.");
+      const offer = await offerOf(bidder, id);
+      if (!offer || offer.sellerId !== me.id) throw httpError(409, "Dit bod bestaat niet meer. De pagina wordt ververst.", { conflict: true });
+      const rem = it.qty - sold;
+      if (rem <= 0) throw httpError(409, `${name} is al volledig gegund.`);
+      const gq = Math.min(num(offer.qty) || 0, rem);
+      if (!(gq > 0)) throw httpError(409, "Dit bod heeft geen geldige hoeveelheid.");
+      accepted[bidder] = { qty: gq, price: num(offer.price) || 0, at: nowIso };
+      sold += gq;
+    }
+    if (sold > it.qty) throw httpError(400, `Van ${name} is al ${sold} ${it.unit} gegund. De hoeveelheid kan niet lager zijn.`);
+    if (Object.keys(accepted).length) it.accepted = accepted;
+    it.remaining = Math.round((it.qty - sold) * 1000) / 1000;
+
+    // Afwijzingen: alleen toevoegen, met het tijdstip van de server
+    const rejected = { ...(was?.rejected || {}) };
+    for (const bidder of Object.keys(it0.rejected && typeof it0.rejected === "object" ? it0.rejected : {})) {
+      if (!rejected[bidder] && !accepted[bidder] && bidder !== me.id && /^[A-Za-z0-9_-]{1,40}$/.test(bidder)) rejected[bidder] = { at: nowIso };
+    }
+    if (Object.keys(rejected).length) it.rejected = rejected;
+
+    // Status volgt uit de cijfers; intrekken vraagt een reden
+    if (was?.status === "ingetrokken" && was.withdrawReason?.by === "beheer" && !wantsWithdraw) {
+      throw httpError(403, `${name} is door de beheerder ingetrokken. Neem contact op met de beheerder.`);
+    }
+    it.status = wantsWithdraw ? "ingetrokken" : it.remaining <= 0 ? "verkocht" : "open";
+    if (wantsWithdraw) {
+      it.withdrawReason = was?.status === "ingetrokken" ? was.withdrawReason : cleanReason(it0.withdrawReason, codes, { required: true });
+      if (!it.withdrawReason) delete it.withdrawReason;
+    }
+    items[id] = it;
+  }
+  for (const [id, was] of Object.entries(old)) {
+    if (!items[id] && Object.keys(was?.accepted || {}).length) {
+      throw httpError(409, `${was.product || "Deze partij"} heeft al gunningen en kan niet worden verwijderd. Trek hem in.`);
+    }
+  }
+  return { out: { company: str(data.company, 120), contact: str(data.contact, 120), items }, ownPhotos };
+}
+
+// ---------- controle van biedingen ----------
+async function normalizeBids(me, prev, data) {
+  const raw = data.offers && typeof data.offers === "object" && !Array.isArray(data.offers) ? data.offers : {};
+  if (Object.keys(raw).length > 1000) throw httpError(413, "Te veel biedingen in één keer.");
+  const old = prev?.offers || {};
+  const lotDocs = new Map();
+  const lotOf = async (seller, lotId) => {
+    if (!lotDocs.has(seller)) lotDocs.set(seller, (await readDoc("lots", seller)).data);
+    return lotDocs.get(seller)?.items?.[lotId] || null;
+  };
+  const t = today();
+  const offers = {};
+  for (const [lotId, o] of Object.entries(raw)) {
+    if (!o || typeof o !== "object") continue;
+    const was = old[lotId];
+    const sellerId = str(o.sellerId, 40);
+    const price = num(o.price), qty = num(o.qty), note = str(o.note, 500);
+    // Ongewijzigd bod: laten staan zoals het was (ook als de partij intussen dicht is)
+    if (was && was.sellerId === sellerId && was.price === price && was.qty === qty && (was.note || "") === note) { offers[lotId] = was; continue; }
+    if (was && was.sellerId !== sellerId) throw httpError(400, "Ongeldig bod.");
+    if (!sellerId || sellerId === me.id) throw httpError(400, "Je kunt niet op je eigen partij bieden.");
+    const l = await lotOf(sellerId, lotId);
+    if (!l) throw httpError(409, "Deze partij bestaat niet meer.", { conflict: true });
+    if (l.accepted?.[me.id] || l.rejected?.[me.id]) throw httpError(409, "Je bod op deze partij is al gegund of afgewezen en kan niet meer worden gewijzigd.");
+    const rem = l.remaining ?? l.qty;
+    if (l.status === "ingetrokken" || l.status === "verkocht" || !(rem > 0) || (l.until && l.until < t)) {
+      throw httpError(409, `${l.product || "Deze partij"} is niet meer beschikbaar.`, { conflict: true });
+    }
+    if (!(price > 0 && price <= 1e6)) throw httpError(400, "Vul een geldige prijs in.");
+    const min = Math.min(l.minQty || 1, rem);
+    if (!(qty >= min)) throw httpError(400, `Bied minimaal ${min} ${l.unit || ""}.`.trim());
+    if (qty > rem) throw httpError(409, `Er is nog maar ${rem} ${l.unit || ""} beschikbaar.`.trim(), { conflict: true });
+    offers[lotId] = { sellerId, product: str(l.product, 80), price, qty, note, at: new Date().toISOString() };
+  }
+  return { company: str(data.company, 120), contact: str(data.contact, 120), offers };
+}
+
+// ---------- wat ziet wie? ----------
+// Een handelaar ziet van anderen niet wie wat geboden heeft of aan wie tegen welke prijs is gegund,
+// alleen de biedingen op zijn eigen partijen en zijn eigen gunningen.
+function lotsView(me, ownerId, data) {
+  if (!data || me.role === "beheerder" || ownerId === me.id) return data;
+  const items = {};
+  for (const [id, it] of Object.entries(data.items || {})) {
+    const { accepted, rejected, withdrawReason, ...rest } = it || {};
+    const x = { ...rest };
+    if (accepted?.[me.id]) x.accepted = { [me.id]: accepted[me.id] };
+    if (rejected?.[me.id]) x.rejected = { [me.id]: rejected[me.id] };
+    items[id] = x;
+  }
+  return { ...data, items };
+}
+function bidsView(me, bidderId, data) {
+  if (!data || me.role === "beheerder" || bidderId === me.id) return data;
+  const offers = {};
+  for (const [id, o] of Object.entries(data.offers || {})) if (o && o.sellerId === me.id) offers[id] = o;
+  return { company: data.company || "", contact: data.contact || "", offers };
 }
 
 // ---------- routes ----------
@@ -472,6 +704,9 @@ async function route(req) {
   const [a, b, c] = parts;
 
   await ensureSchema();
+  const ip = clientIp(req);
+  const isWebhook = a === "mollie" && b === "webhook";
+  if (method !== "GET" && !isWebhook) checkOrigin(req);
 
   // Status: is er al een beheerder? Plus de openbare website-instellingen.
   if (a === "status" && method === "GET") {
@@ -484,19 +719,21 @@ async function route(req) {
     const expected = process.env.RPB_SETUP_CODE || "";
     if (!expected) throw httpError(500, "RPB_SETUP_CODE ontbreekt in Netlify.");
     if ((await countUsers()) > 0) throw httpError(409, "Er is al een beheerder. Log in.");
+    await throttle("setup", ip, 10, 15);
     const given = str(body.setupCode, 200);
     const ok = given.length === expected.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
-    if (!ok) throw httpError(403, "De installatiecode klopt niet.");
-    const user = await insertUser({ ...body, role: "beheerder" });
+    if (!ok) { await attempt("setup", ip); throw httpError(403, "De installatiecode klopt niet."); }
+    const user = await insertUser({ ...body, role: "beheerder", mustChange: false });
     const token = await createSession(user.id);
     await log(user, "account", "Eerste beheerder aangemaakt");
-    return json(200, { token, user });
+    return json(200, { user }, { "set-cookie": sessionCookie(req, token) });
   }
 
   // Account aanvragen (zonder login). Het account staat uit tot een beheerder het goedkeurt.
   if (a === "register" && method === "POST") {
     const body = await readBody(req);
     if (str(body.website, 200)) return json(200, { ok: true }); // honeypot: bots vullen dit verborgen veld in
+    await throttle("register", ip, 5, 60, "Er zijn vanaf dit netwerk al meerdere aanvragen gedaan. Probeer het over een uur opnieuw.");
     if ((await countUsers()) === 0) throw httpError(409, "Er is nog geen beheerder. Maak eerst het beheerdersaccount aan.");
     if (!(await getSettings()).registrationOpen) throw httpError(403, "Aanmelden is op dit moment gesloten. Neem contact op met de beheerder.");
     const company = str(body.company, 120), kvk = str(body.kvk, 20).replace(/\s|\./g, "");
@@ -509,6 +746,7 @@ async function route(req) {
     if (Number(pend.rows[0].n) >= MAX_PENDING) throw httpError(429, "Er staan te veel aanvragen open. Probeer het later opnieuw.");
     const contact = [phone, email].filter(Boolean).join(" / ");
     const nu = await insertUser({ name: body.name, company, contact, code: body.code, role: "handelaar", pending: true, kvk, email, note: body.note });
+    await attempt("register", ip);
     await log(nu, "account", `Account aangevraagd (KvK ${kvk})`);
     if (body.payNow) {
       const s = await getSettings();
@@ -533,16 +771,18 @@ async function route(req) {
   if (a === "login" && method === "POST") {
     const body = await readBody(req);
     const key = nameKey(str(body.name, 60));
-    const code = typeof body.code === "string" ? body.code : "";
+    const code = typeof body.code === "string" ? body.code.slice(0, 200) : "";
+    await throttle("login", ip, 30, 15);
     const r = await q("SELECT * FROM rpb_users WHERE name_key = $1", [key]);
     const u = r.rows[0];
     const fail = () => httpError(401, "Naam of code klopt niet.");
-    if (!u) throw fail();
+    if (!u) { checkCode(code, "x", "00"); await attempt("login", ip); throw fail(); } // even lang rekenen als bij een bestaande naam
     if (u.pending) {
       if (checkCode(code, u.salt, u.hash)) throw httpError(403, "Je aanvraag is ontvangen en wacht op goedkeuring door de beheerder.");
+      await attempt("login", ip);
       throw fail();
     }
-    if (!u.active) throw fail();
+    if (!u.active) { await attempt("login", ip); throw fail(); }
     if (u.locked_until && new Date(u.locked_until) > new Date()) {
       throw httpError(429, `Te vaak een verkeerde code. Probeer het over ${LOCK_MINUTES} minuten opnieuw.`);
     }
@@ -551,13 +791,16 @@ async function route(req) {
       const lock = failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60000) : null;
       await q("UPDATE rpb_users SET failed = $2, locked_until = $3 WHERE id = $1", [u.id, failed >= MAX_FAILED ? 0 : failed, lock]);
       await log(u, "inloggen", lock ? `Verkeerde code, account ${LOCK_MINUTES} minuten geblokkeerd` : "Verkeerde code");
+      await attempt("login", ip);
       throw fail();
     }
-    await q("UPDATE rpb_users SET failed = 0, locked_until = NULL WHERE id = $1", [u.id]);
+    // Te korte code van vóór de nieuwe regels: eerst een nieuwe kiezen
+    const mustChange = !!u.must_change || code.length < MIN_CODE;
+    await q("UPDATE rpb_users SET failed = 0, locked_until = NULL, must_change = $2 WHERE id = $1", [u.id, mustChange]);
     await log(u, "inloggen", "Ingelogd");
     await q("DELETE FROM rpb_sessions WHERE expires_at < $1", [new Date()]);
     const token = await createSession(u.id);
-    return json(200, { token, user: publicUser(u) });
+    return json(200, { user: publicUser({ ...u, must_change: mustChange }) }, { "set-cookie": sessionCookie(req, token) });
   }
 
   // Foto tonen: /api/photo/<id>?s=t (miniatuur) of ?s=f (groot).
@@ -593,6 +836,9 @@ async function route(req) {
 
   // Vanaf hier: ingelogd
   const me = await auth(req);
+  if (me.must_change && a !== "me" && a !== "logout") {
+    throw httpError(403, `Kies eerst een nieuwe code van minstens ${MIN_CODE} tekens.`, { mustChange: true });
+  }
 
   // Abonnement online betalen: maakt een Mollie-betaling en geeft de betaalpagina terug
   if (a === "pay" && b === "subscription" && method === "POST") {
@@ -630,6 +876,11 @@ async function route(req) {
       if (!m) throw httpError(400, "Alleen JPEG- of WebP-foto's zijn toegestaan.");
       const bytes = Buffer.byteLength(m[2], "base64");
       if (bytes > max) throw httpError(413, `De ${label} is te groot.`);
+      // Controleer of de inhoud echt een JPEG of WebP is, niet alleen wat de browser zegt
+      const head = Buffer.from(m[2].slice(0, 24), "base64");
+      const isJpeg = head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+      const isWebp = head.slice(0, 4).toString("latin1") === "RIFF" && head.slice(8, 12).toString("latin1") === "WEBP";
+      if (m[1] === "image/jpeg" ? !isJpeg : !isWebp) throw httpError(400, "Dit bestand is geen geldige foto.");
       return { mime: m[1], b64: m[2] };
     };
     const full = parse(body.full, MAX_FULL_BYTES, "foto");
@@ -653,13 +904,15 @@ async function route(req) {
   }
 
   if (a === "logout" && method === "POST") {
-    const token = (req.headers.get("authorization") || "").slice(7);
-    await q("DELETE FROM rpb_sessions WHERE token_hash = $1", [sha256(token)]);
+    await q("DELETE FROM rpb_sessions WHERE token_hash = $1", [sha256(me._token)]);
     await log(me, "inloggen", "Uitgelogd");
-    return json(200, { ok: true });
+    return json(200, { ok: true }, { "set-cookie": sessionCookie(req, "") });
   }
 
-  if (a === "me" && method === "GET") return json(200, { user: publicUser(me) });
+  // Oude versie bewaarde de sessie in de browser; die zetten we hier om naar een HttpOnly-cookie
+  if (a === "me" && method === "GET") {
+    return json(200, { user: publicUser(me) }, me._via === "bearer" ? { "set-cookie": sessionCookie(req, me._token) } : {});
+  }
 
   if (a === "me" && method === "PATCH") {
     const body = await readBody(req);
@@ -668,8 +921,14 @@ async function route(req) {
     if (body.newCode !== undefined) {
       if (!checkCode(String(body.currentCode || ""), me.salt, me.hash)) throw httpError(403, "Je huidige code klopt niet.");
       validCode(body.newCode);
+      if (body.newCode === body.currentCode) throw httpError(400, "Kies een andere code dan je huidige.");
       const salt = crypto.randomBytes(16).toString("hex");
-      await q("UPDATE rpb_users SET salt = $2, hash = $3 WHERE id = $1", [me.id, salt, hashCode(body.newCode, salt)]);
+      await q("UPDATE rpb_users SET salt = $2, hash = $3, must_change = FALSE WHERE id = $1", [me.id, salt, hashCode(body.newCode, salt)]);
+      await q("DELETE FROM rpb_sessions WHERE user_id = $1 AND token_hash <> $2", [me.id, sha256(me._token)]); // andere apparaten uitloggen
+      await log(me, "account", "Eigen code gewijzigd");
+      me.must_change = false;
+    } else if (me.must_change) {
+      throw httpError(403, `Kies eerst een nieuwe code van minstens ${MIN_CODE} tekens.`, { mustChange: true });
     }
     await q("UPDATE rpb_users SET company = $2, contact = $3 WHERE id = $1", [me.id, company, contact]);
     return json(200, { user: publicUser({ ...me, company, contact }) });
@@ -681,9 +940,23 @@ async function route(req) {
     const now = new Date();
     let r;
     if (since && !isNaN(Date.parse(since))) {
-      r = await q("SELECT collection, id, data FROM rpb_docs WHERE updated_at > $1", [new Date(since)]);
+      r = await q("SELECT collection, id, data, version FROM rpb_docs WHERE updated_at > $1", [new Date(since)]);
     } else {
-      r = await q("SELECT collection, id, data FROM rpb_docs WHERE data IS NOT NULL");
+      r = await q("SELECT collection, id, data, version FROM rpb_docs WHERE data IS NOT NULL");
+    }
+    const docs = r.rows.map((d) => ({
+      collection: d.collection, id: d.id, version: Number(d.version) || 0,
+      data: d.collection === "lots" ? lotsView(me, d.id, d.data) : d.collection === "bids" ? bidsView(me, d.id, d.data) : null,
+    }));
+    // Per partij alleen het hoogste bod en het aantal biedingen, zonder namen
+    const allBids = await q("SELECT data FROM rpb_docs WHERE collection = 'bids' AND data IS NOT NULL");
+    const market = {};
+    for (const row of allBids.rows) {
+      for (const [lotId, o] of Object.entries(row.data?.offers || {})) {
+        if (!o) continue;
+        const m = market[lotId] || (market[lotId] = { top: 0, n: 0 });
+        m.n++; if (Number(o.price) > m.top) m.top = Number(o.price);
+      }
     }
     // Actuele bedrijfsnaam en contact per gebruiker, zodat oude partijen en biedingen
     // de nieuwste gegevens tonen als daar zelf niets is ingevuld.
@@ -695,53 +968,44 @@ async function route(req) {
       const pc = await q("SELECT COUNT(*)::int AS n FROM rpb_users WHERE pending = TRUE");
       pendingCount = Number(pc.rows[0].n);
     }
-    return json(200, { now: now.toISOString(), full: !since, docs: r.rows, profiles, pendingCount });
+    return json(200, { now: now.toISOString(), full: !since, docs, market, profiles, pendingCount });
   }
 
   // Eigen document schrijven: /api/doc/lots of /api/doc/bids
+  // De browser stuurt mee welke versie hij heeft gelezen ("base"). Is het document intussen
+  // gewijzigd, dan weigert de server (409) en haalt de browser eerst de nieuwe versie op.
   if (a === "doc" && b && COLLECTIONS.has(b) && !c && method === "PUT") {
     await requireTrade(me);
     const body = await readBody(req);
     const data = body.data;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw httpError(400, "Ongeldige gegevens.");
-    const now = new Date();
-    const prevR = await q("SELECT data FROM rpb_docs WHERE collection = $1 AND id = $2", [b, me.id]);
-    const prev = prevR.rows[0]?.data || null;
-    // Intrekken van een partij vraagt een geldige redencode
-    if (b === "lots") {
-      const codes = (await getSettings()).reasonCodes;
-      for (const [id, it] of Object.entries(data.items || {})) {
-        const old = prev?.items?.[id];
-        if (it && it.status === "ingetrokken" && (!old || old.status !== "ingetrokken")) {
-          it.withdrawReason = cleanReason(it.withdrawReason, codes, { required: true });
-        } else if (it && it.status !== "ingetrokken") {
-          delete it.withdrawReason;
-        } else if (it && old) {
-          it.withdrawReason = old.withdrawReason; // bestaande reden niet laten overschrijven
-        }
-      }
-    }
-    const text = JSON.stringify(data);
-    if (Buffer.byteLength(text) > MAX_DOC_BYTES) throw httpError(413, "Te veel gegevens in één keer. Trek oude partijen of biedingen in.");
-    await q(
-      `INSERT INTO rpb_docs (collection, id, data, updated_at, updated_by) VALUES ($1, $2, $3::jsonb, $4, $2)
-       ON CONFLICT (collection, id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by`,
-      [b, me.id, text, now]
-    );
+    const cur = await readDoc(b, me.id);
+    if (Number.isInteger(body.base) && body.base !== cur.version) throw conflict();
+    const prev = cur.data;
+    let clean, ownPhotos = null;
+    if (b === "lots") ({ out: clean, ownPhotos } = await normalizeLots(me, prev, data));
+    else clean = await normalizeBids(me, prev, data);
+    if (Buffer.byteLength(JSON.stringify(clean)) > MAX_DOC_BYTES) throw httpError(413, "Te veel gegevens in één keer. Trek oude partijen of biedingen in.");
+    const saved = await writeDocAt(b, me.id, cur, clean, me.id);
+    if (!saved) throw conflict();
     let lines = [];
     if (b === "lots") {
       const nr = await q("SELECT id, name, company FROM rpb_users");
       const names = {}; for (const row of nr.rows) names[row.id] = row.company || row.name;
-      lines = describeLots(prev, data, names);
-    } else lines = describeBids(prev, data);
+      lines = describeLots(prev, clean, names);
+      // Foto's die nergens meer bij horen en ouder zijn dan 6 uur opruimen
+      const used = new Set(Object.values(clean.items).flatMap((it) => it.photos || []));
+      const cutoff = Date.now() - 6 * 3600000;
+      for (const [pid, at] of ownPhotos) if (!used.has(pid) && at.getTime() < cutoff) await q("DELETE FROM rpb_photos WHERE id = $1 AND owner = $2", [pid, me.id]);
+    } else lines = describeBids(prev, clean);
     for (const [kind, detail] of lines.slice(0, 10)) await log(me, kind, detail);
-    return json(200, { ok: true, at: now.toISOString() });
+    return json(200, { ok: true, at: saved.at.toISOString(), version: saved.version, data: clean });
   }
 
   // Beheerder: document van een ander verwijderen (opruimen)
   if (a === "doc" && b && COLLECTIONS.has(b) && c && method === "DELETE") {
     requireAdmin(me);
-    await q("UPDATE rpb_docs SET data = NULL, updated_at = $3, updated_by = $4 WHERE collection = $1 AND id = $2", [b, c, new Date(), me.id]);
+    await q("UPDATE rpb_docs SET data = NULL, updated_at = $3, updated_by = $4, version = version + 1 WHERE collection = $1 AND id = $2", [b, c, new Date(), me.id]);
     return json(200, { ok: true });
   }
 
@@ -756,7 +1020,7 @@ async function route(req) {
   }
   if (a === "users" && !b && method === "POST") {
     requireAdmin(me);
-    const user = await insertUser(await readBody(req));
+    const user = await insertUser({ ...(await readBody(req)), mustChange: true }); // gebruiker kiest bij eerste keer inloggen zelf een code
     await log(me, "beheer", `Gebruiker aangemaakt: ${user.name}${user.company ? " (" + user.company + ")" : ""}, rol ${user.role}`);
     return json(200, { user });
   }
@@ -794,7 +1058,7 @@ async function route(req) {
     if (body.code !== undefined) {
       validCode(body.code);
       const salt = crypto.randomBytes(16).toString("hex");
-      await q("UPDATE rpb_users SET salt = $2, hash = $3, failed = 0, locked_until = NULL WHERE id = $1", [b, salt, hashCode(body.code, salt)]);
+      await q("UPDATE rpb_users SET salt = $2, hash = $3, failed = 0, locked_until = NULL, must_change = TRUE WHERE id = $1", [b, salt, hashCode(body.code, salt)]);
     }
     if (!active || body.code !== undefined) await q("DELETE FROM rpb_sessions WHERE user_id = $1", [b]);
     const who = `${name}${company ? " (" + company + ")" : ""}`;
@@ -934,23 +1198,25 @@ async function route(req) {
     if (b === "lots" && method === "POST") {
       const body = await readBody(req);
       const sellerId = str(body.sellerId, 40), lotId = str(body.lotId, 60), action = body.action;
-      const r = await q("SELECT data FROM rpb_docs WHERE collection = 'lots' AND id = $1", [sellerId]);
-      const doc = r.rows[0]?.data;
-      const it = doc?.items?.[lotId];
-      if (!it) throw httpError(404, "Partij niet gevonden.");
+      if (!["withdraw", "reopen", "delete"].includes(action)) throw httpError(400, "Onbekende actie.");
+      const codes = (await getSettings()).reasonCodes;
+      const reason = action === "reopen" ? null : cleanReason(body.reason, codes, { required: true });
+      let it, saved = null;
+      for (let tryNo = 0; tryNo < 3 && !saved; tryNo++) { // opnieuw proberen als de verkoper tegelijk iets wijzigt
+        const cur = await readDoc("lots", sellerId);
+        const doc = cur.data;
+        it = doc?.items?.[lotId];
+        if (!it) throw httpError(404, "Partij niet gevonden.");
+        if (action === "withdraw") { it.status = "ingetrokken"; it.withdrawReason = { ...reason, by: "beheer" }; }
+        else if (action === "reopen") { it.status = (it.remaining ?? it.qty) > 0 ? "open" : "verkocht"; delete it.withdrawReason; }
+        else delete doc.items[lotId];
+        saved = await writeDocAt("lots", sellerId, cur, doc, me.id);
+      }
+      if (!saved) throw conflict();
+      if (action === "delete") for (const p of Array.isArray(it.photos) ? it.photos : []) await q("DELETE FROM rpb_photos WHERE id = $1", [p]);
       const label = `${it.product || "partij"}${it.ras ? " " + it.ras : ""}`;
       const nr = await q("SELECT name, company FROM rpb_users WHERE id = $1", [sellerId]);
       const owner = nr.rows[0] ? (nr.rows[0].company || nr.rows[0].name) : "onbekend";
-      const codes = (await getSettings()).reasonCodes;
-      const reason = action === "reopen" ? null : cleanReason(body.reason, codes, { required: true });
-      if (action === "withdraw") { it.status = "ingetrokken"; it.withdrawReason = { ...reason, by: "beheer" }; }
-      else if (action === "reopen") { it.status = (it.remaining ?? it.qty) > 0 ? "open" : "verkocht"; delete it.withdrawReason; }
-      else if (action === "delete") {
-        for (const p of Array.isArray(it.photos) ? it.photos : []) await q("DELETE FROM rpb_photos WHERE id = $1", [p]);
-        delete doc.items[lotId];
-      } else throw httpError(400, "Onbekende actie.");
-      await q("UPDATE rpb_docs SET data = $2::jsonb, updated_at = $3, updated_by = $4 WHERE collection = 'lots' AND id = $1",
-        [sellerId, JSON.stringify(doc), new Date(), me.id]);
       const verb = { withdraw: "ingetrokken", reopen: "heropend", delete: "verwijderd" }[action];
       await log(me, "beheer", `Partij van ${owner} ${verb}: ${label}${reason ? ` — reden ${reason.code} ${reason.label}${reason.note ? ": " + reason.note : ""}` : ""}`);
       return json(200, { ok: true });
@@ -987,7 +1253,7 @@ export default async (req) => {
   try {
     return await route(req);
   } catch (e) {
-    if (e && e.status) return json(e.status, { error: e.message });
+    if (e && e.status) return json(e.status, { error: e.message, ...(e.extra || {}) });
     console.error(e);
     const msg = String((e && e.message) || e);
     const hint = /certificate/i.test(msg) ? " (certificaat: zie PG_SSL_CA / PG_SSL_INSECURE)" : "";
