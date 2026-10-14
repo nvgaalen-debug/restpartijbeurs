@@ -863,14 +863,22 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     } catch {
       throw Object.assign(new Error("Geen verbinding met de server."), { status: 0 });
     }
-    let data = {};
+    let data = null;
     try { data = await res.json(); } catch {}
+    // Antwoorden van onze eigen functie zijn altijd JSON. Iets anders komt van daarvóór:
+    // Netlify-toegangsbeveiliging, een bedrijfsproxy (bijv. Zscaler) of een verlopen netwerk-login.
+    const fromApp = !!(data && typeof data === "object");
+    if (!res.ok && !fromApp) {
+      throw Object.assign(new Error(res.status === 401 || res.status === 403 || res.status === 407
+        ? `De verbinding werd geweigerd (${res.status}) voordat de app werd bereikt. Dat komt meestal door een verlopen netwerk- of websitebeveiliging. Herlaad de pagina.`
+        : `De server reageert niet goed (${res.status}). Probeer het over een minuut opnieuw.`), { status: res.status, external: true });
+    }
     if (res.status === 401 && S.token && !/^(login|setup)$/.test(path)) {
       signOutLocal();
       showLogin("Je sessie is verlopen. Log opnieuw in.");
     }
     if (!res.ok) throw Object.assign(new Error(data.error || "Er ging iets mis (" + res.status + ")."), { status: res.status });
-    return data;
+    return data || {};
   }
 
   let pollTimer = null;
@@ -1447,13 +1455,16 @@ body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
     $("#view-login").hidden = false;
     $("#status").hidden = true;
     let needsSetup = false;
-    try { const st = await api("status"); needsSetup = st.needsSetup; applySettings(st.settings); }
+    try { const st = await api("status"); needsSetup = st.needsSetup; applySettings(st.settings); try { sessionStorage.removeItem("rpb.reloaded"); } catch {} }
     catch (e) {
       $("#form-setup").hidden = true; $("#form-login").hidden = true;
       const el = $("#status"); el.hidden = false;
-      el.innerHTML = `<strong>De server is niet goed ingesteld.</strong> <span id="status-msg"></span> <button class="btn small" type="button" id="btn-retry">Opnieuw proberen</button>`;
+      // Eén keer automatisch de hele pagina herladen bij een geweigerde verbinding van buitenaf
+      let tried = false; try { tried = sessionStorage.getItem("rpb.reloaded") === "1"; } catch {}
+      if (e.external && !tried) { try { sessionStorage.setItem("rpb.reloaded", "1"); } catch {} location.reload(); return; }
+      el.innerHTML = `<strong>${e.external ? "Geen verbinding met de app." : e.status === 0 ? "Geen internetverbinding." : "De server is niet goed ingesteld."}</strong> <span id="status-msg"></span> <button class="btn small" type="button" id="btn-retry">${e.external ? "Pagina herladen" : "Opnieuw proberen"}</button>`;
       $("#status-msg").textContent = e.message;
-      $("#btn-retry").addEventListener("click", () => showLogin());
+      $("#btn-retry").addEventListener("click", () => (e.external ? location.reload() : showLogin()));
       return;
     }
     // Heeft de gebruiker intussen al 'Account aanvragen' geopend, laat dat dan staan.
