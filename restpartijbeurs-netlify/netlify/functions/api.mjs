@@ -9,6 +9,7 @@
 //   PG_SSL_INSECURE  "true" = certificaat niet controleren (verbinding blijft versleuteld)
 //   MOLLIE_API_KEY   Mollie-sleutel voor online betalen (test_... of live_...)
 //   PG_SCHEMA        Eigen schema in de database, bijv. "rpb_test" voor de testomgeving (leeg = standaard)
+//   PG_MIGRATE_FROM  Eenmalig, bijv. "public": verplaatst bestaande rpb_-tabellen naar PG_SCHEMA. Daarna weghalen.
 //   APP_ENV          "test" = testomgeving: oranje balk "TESTOMGEVING" in de app; leegmaken toegestaan
 //   ALLOW_WIPE       "true" = leegmaken ook buiten de testomgeving toestaan (standaard uit)
 //   GMAIL_USER         Gmail-adres voor e-mail (code vergeten)          optioneel
@@ -36,8 +37,13 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
+const SCHEMA_VERSION = "2026-10-14b"; // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
+// Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
+// Alleen tabellen van de Restpartijbeurs (vaste lijst), nooit die van een andere app (zoals records van Vloeren Kassa).
+const PG_MIGRATE_FROM = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_MIGRATE_FROM || "") ? process.env.PG_MIGRATE_FROM : "";
+const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets"];
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -51,7 +57,9 @@ function getPool() {
   else ssl = { rejectUnauthorized: true };
   // sslmode uit de URL halen, anders overschrijft pg onze ssl-instelling
   const clean = url.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
-  pool = new pg.Pool({ connectionString: clean, ssl, max: 3, idleTimeoutMillis: 10000, ...(PG_SCHEMA ? { options: `-c search_path=${PG_SCHEMA}` } : {}) });
+  // Time-outs: liever een nette foutmelding dan een functie die blijft hangen
+  const options = [PG_SCHEMA ? `-c search_path=${PG_SCHEMA}` : "", "-c statement_timeout=10000"].filter(Boolean).join(" ");
+  pool = new pg.Pool({ connectionString: clean, ssl, max: 3, idleTimeoutMillis: 10000, connectionTimeoutMillis: 8000, options });
   return pool;
 }
 
@@ -59,9 +67,33 @@ async function q(text, params = []) {
   return getPool().query(text, params);
 }
 
+// Verplaatst in één keer (één opdracht = alles of niets). Een tabel die al in het doelschema staat,
+// blijft staan: nooit iets overschrijven. Indexen en de teller van rpb_log gaan automatisch mee.
+async function migrateTables(from, to) {
+  const list = RPB_TABLES.map((t) => `'${t}'`).join(",");
+  await q(`DO $mig$ DECLARE t text; moved int := 0; BEGIN
+    EXECUTE 'CREATE SCHEMA IF NOT EXISTS ${to}';
+    FOREACH t IN ARRAY ARRAY[${list}] LOOP
+      IF to_regclass('${from}.' || t) IS NOT NULL AND to_regclass('${to}.' || t) IS NULL THEN
+        EXECUTE format('ALTER TABLE %I.%I SET SCHEMA %I', '${from}', t, '${to}');
+        moved := moved + 1;
+      END IF;
+    END LOOP;
+    RAISE NOTICE 'rpb: % tabellen verplaatst van ${from} naar ${to}', moved;
+  END $mig$`);
+  console.log(`rpb: tabellen gecontroleerd/verplaatst van ${from} naar ${to}`);
+}
+
 async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
+      // Nooit in de testomgeving: anders zou productie naar het testschema kunnen verhuizen
+      if (PG_SCHEMA && PG_MIGRATE_FROM && PG_MIGRATE_FROM !== PG_SCHEMA && process.env.APP_ENV !== "test") await migrateTables(PG_MIGRATE_FROM, PG_SCHEMA);
+      // Snelle start: is het schema al bijgewerkt, dan alle CREATE/ALTER-opdrachten overslaan
+      try {
+        const v = await q("SELECT value FROM rpb_settings WHERE key = '_schema'");
+        if (v.rows[0]?.value === SCHEMA_VERSION) return;
+      } catch { /* tabel bestaat nog niet: hieronder aanmaken */ }
       if (PG_SCHEMA) await q(`CREATE SCHEMA IF NOT EXISTS ${PG_SCHEMA}`);
       await q(`CREATE TABLE IF NOT EXISTS rpb_users (
         id TEXT PRIMARY KEY,
@@ -161,6 +193,7 @@ async function ensureSchema() {
         full_img TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL
       )`);
+      await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
   }
   return schemaReady;
@@ -173,7 +206,11 @@ const conflict = () => httpError(409, "Deze gegevens zijn net ergens anders gewi
 function json(status, body, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extraHeaders },
+    headers: {
+      "content-type": "application/json; charset=utf-8", "cache-control": "no-store",
+      "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+      "referrer-policy": "same-origin", ...extraHeaders,
+    },
   });
 }
 
@@ -218,8 +255,14 @@ async function attempt(kind, ip) {
   if (Math.random() < 0.05) await q("DELETE FROM rpb_attempts WHERE at < $1", [new Date(Date.now() - 86400000)]);
 }
 
+const MAX_BODY_BYTES = 1536 * 1024; // ruim genoeg voor een foto (groot + miniatuur) in base64
 async function readBody(req) {
-  try { const b = await req.json(); return b && typeof b === "object" ? b : {}; }
+  const len = Number(req.headers.get("content-length") || 0);
+  if (len > MAX_BODY_BYTES) throw httpError(413, "Te veel gegevens in één keer.");
+  let text = "";
+  try { text = await req.text(); } catch { return {}; }
+  if (text.length > MAX_BODY_BYTES) throw httpError(413, "Te veel gegevens in één keer.");
+  try { const b = JSON.parse(text); return b && typeof b === "object" && !Array.isArray(b) ? b : {}; }
   catch { return {}; }
 }
 
@@ -541,7 +584,19 @@ function amsMidnight(d) {
 }
 function addDay(d) { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Bedrag als tekst in euro's ("120", "120,50", "1.200,00", "€ 120") → hele centen, of null
+function parseEuroText(raw) {
+  if (typeof raw === "number") return Number.isFinite(raw) ? Math.round(raw * 100) : null;
+  let t = String(raw ?? "").replace(/[€\s]/g, "");
+  if (!t) return null;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
+  return Math.round(Number(t) * 100);
+}
+// Datum van vandaag in Nederland (niet UTC), zodat "houdbaar tot" en abonnementen om middernacht NL wisselen
+const AMS_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit", day: "2-digit" });
+const today = () => AMS_DATE.format(new Date());
 const validDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
 // Einddatum abonnement = datum + 12 maanden (29 februari wordt 28 februari)
 function addYear(d) {
@@ -687,6 +742,9 @@ async function writeDocAt(collection, id, cur, data, by) {
 }
 
 // ---------- controle van partijen (door de server, niet door de browser) ----------
+const UNITS = ["colli", "kg", "pallets", "kisten", "zakken"];
+const CATEGORIES = ["Groente", "Fruit", "Aardappelen"];
+const KLASSEN = ["Klasse I", "Klasse II", "Industrie / verwerking", "Biologisch Klasse I", "Biologisch Klasse II"];
 const LOT_TEXT = { product: 80, ras: 80, category: 40, klasse: 40, origin: 60, location: 80, unit: 20, pack: 120, note: 1000, company: 120, contact: 120 };
 const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v.replace(",", ".")) : NaN);
 const isoOr = (v, d) => (typeof v === "string" && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : d);
@@ -714,6 +772,11 @@ async function normalizeLots(me, prev, data) {
     for (const [k, max] of Object.entries(LOT_TEXT)) it[k] = str(it0[k], max);
     const name = it.product || "partij";
     if (!it.product) throw httpError(400, "Vul bij elke partij een product in.");
+    // Vaste keuzelijsten; een bestaande waarde die niet verandert laten we staan (oude partijen)
+    const changed = (k) => !was || was[k] !== it[k];
+    if (changed("unit") && !UNITS.includes(it.unit)) throw httpError(400, `Ongeldige eenheid bij ${name}.`);
+    if (changed("category") && !CATEGORIES.includes(it.category)) throw httpError(400, `Ongeldige categorie bij ${name}.`);
+    if (changed("klasse") && it.klasse && !KLASSEN.includes(it.klasse)) throw httpError(400, `Ongeldige klasse bij ${name}.`);
     it.qty = num(it0.qty);
     if (!(it.qty > 0 && it.qty <= 1e7)) throw httpError(400, `Ongeldige hoeveelheid bij ${name}.`);
     it.price = num(it0.price);
@@ -769,9 +832,14 @@ async function normalizeLots(me, prev, data) {
     }
     items[id] = it;
   }
+  // Een partij verdwijnt nooit via opslaan vanuit de browser (de app heeft daar geen knop voor).
+  // Ontbreekt er een, dan is de browser verouderd: weigeren en opnieuw laten ophalen.
+  // Verwijderen kan alleen de beheerder, via Beheer → Restpartijen.
   for (const [id, was] of Object.entries(old)) {
-    if (!items[id] && Object.keys(was?.accepted || {}).length) {
-      throw httpError(409, `${was.product || "Deze partij"} heeft al gunningen en kan niet worden verwijderd. Trek hem in.`);
+    if (!items[id]) {
+      throw httpError(409, Object.keys(was?.accepted || {}).length
+        ? `${was.product || "Deze partij"} heeft al gunningen en kan niet worden verwijderd. Trek hem in.`
+        : `${was.product || "Een partij"} ontbreekt in wat je browser stuurde. De pagina wordt ververst; probeer het daarna opnieuw.`, { conflict: true });
     }
   }
   return { out: { company: str(data.company, 120), contact: str(data.contact, 120), items }, ownPhotos };
@@ -956,6 +1024,27 @@ async function route(req) {
       await log(u, "account", `Code vergeten gemeld (bereikbaar via ${contact})`);
     }
     return json(200, done);
+  }
+
+  // Beheerder herstellen met de installatiecode (RPB_SETUP_CODE uit Netlify).
+  // Voor als de enige beheerder zijn code kwijt is: alleen wie bij de Netlify-instellingen kan, kent die code.
+  if (a === "recover" && method === "POST") {
+    const body = await readBody(req);
+    await throttle("recover", ip, 5, 15);
+    const expected = process.env.RPB_SETUP_CODE || "";
+    if (!expected) throw httpError(503, "Er is geen installatiecode ingesteld in Netlify (RPB_SETUP_CODE).");
+    const given = str(body.setupCode, 200);
+    const okCode = given.length === expected.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+    if (!okCode) { await attempt("recover", ip); throw httpError(403, "De installatiecode klopt niet."); }
+    const r = await q("SELECT * FROM rpb_users WHERE name_key = $1", [nameKey(str(body.name, 60))]);
+    const u = r.rows[0];
+    if (!u || u.role !== "beheerder" || u.pending) { await attempt("recover", ip); throw httpError(404, "Er is geen beheerder met deze naam."); }
+    validCode(body.code);
+    const salt = crypto.randomBytes(16).toString("hex");
+    await q("UPDATE rpb_users SET salt = $2, hash = $3, failed = 0, locked_until = NULL, must_change = FALSE, active = TRUE WHERE id = $1", [u.id, salt, hashCode(body.code, salt)]);
+    await q("DELETE FROM rpb_sessions WHERE user_id = $1", [u.id]); // overal uitloggen
+    await log(u, "account", "Beheerderscode hersteld met de installatiecode");
+    return json(200, { ok: true, name: u.name });
   }
 
   // Nieuwe code instellen met de link uit de e-mail
@@ -1173,7 +1262,7 @@ async function route(req) {
     }
     // Actuele bedrijfsnaam en contact per gebruiker, zodat oude partijen en biedingen
     // de nieuwste gegevens tonen als daar zelf niets is ingevuld.
-    const p = await q("SELECT id, company, contact FROM rpb_users");
+    const p = await q("SELECT id, company, contact FROM rpb_users WHERE active = TRUE AND pending = FALSE"); // geen gegevens van aanvragers
     const profiles = {};
     for (const row of p.rows) profiles[row.id] = { company: row.company, contact: row.contact };
     let pendingCount;
@@ -1449,14 +1538,23 @@ async function route(req) {
     if (b === "settings" && method === "PUT") {
       const body = await readBody(req);
       const before = await getSettings();
+      // Prijs: bij voorkeur hele centen (subscriptionPriceCents); oude manier (euro's als tekst) streng gelezen.
+      // Iets wat we niet kunnen lezen wordt een foutmelding, nooit stilletjes € 0 (dan is handelen gratis).
+      let priceCents;
+      if (body.subscriptionPriceCents !== undefined) priceCents = body.subscriptionPriceCents;
+      else if (body.subscriptionPrice !== undefined) priceCents = parseEuroText(body.subscriptionPrice);
+      else priceCents = before.subscriptionPrice;
+      if (!Number.isInteger(priceCents) || priceCents < 0 || priceCents > 10000000) throw httpError(400, "Ongeldige abonnementsprijs. Vul een bedrag in, bijvoorbeeld 120 of 120,50.");
+      const vat = body.vatPercent === undefined ? before.vatPercent : typeof body.vatPercent === "number" ? body.vatPercent : String(body.vatPercent).trim() === "" ? NaN : Number(String(body.vatPercent).replace(",", ".").trim());
+      if (!Number.isFinite(vat) || vat < 0 || vat > 100) throw httpError(400, "Ongeldig btw-percentage. Vul een getal tussen 0 en 100 in.");
       const vals = {
         siteName: str(body.siteName, 60) || SETTING_DEFAULTS.siteName,
         welcomeText: str(body.welcomeText, 1000),
         announcement: str(body.announcement, 500),
         registrationOpen: body.registrationOpen === false ? "false" : "true",
-        subscriptionPrice: String(Math.max(0, Math.round(Number(String(body.subscriptionPrice ?? "").replace(",", ".")) * 100) || 0)),
+        subscriptionPrice: String(priceCents),
         subscriptionText: str(body.subscriptionText, 300),
-        vatPercent: String(Math.min(100, Math.max(0, Number(String(body.vatPercent ?? "21").replace(",", ".")) || 0))),
+        vatPercent: String(vat),
         payMethods: (Array.isArray(body.payMethods) ? body.payMethods : []).filter((x) => PAY_METHODS.includes(x)).join(","),
         autoApprovePaid: body.autoApprovePaid === true ? "true" : "false",
         requireSubscription: body.requireSubscription === false ? "false" : "true",
@@ -1532,7 +1630,8 @@ export default async (req) => {
     if (e && e.status) return json(e.status, { error: e.message, ...(e.extra || {}) });
     console.error(e);
     const msg = String((e && e.message) || e);
+    const dbProblem = /certificate|ECONN|ETIMEDOUT|ENOTFOUND|connect|terminat|timeout|password authentication|SQL:/i.test(msg) || (e && typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code));
     const hint = /certificate/i.test(msg) ? " (certificaat: zie PG_SSL_CA / PG_SSL_INSECURE)" : "";
-    return json(500, { error: "Database niet bereikbaar" + hint + "." });
+    return json(500, { error: dbProblem ? "Database niet bereikbaar" + hint + ". Probeer het over een minuut opnieuw." : "Er ging iets mis op de server. Probeer het opnieuw; blijft het misgaan, meld het dan bij de beheerder." });
   }
 };

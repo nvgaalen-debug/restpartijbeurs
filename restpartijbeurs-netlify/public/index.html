@@ -156,6 +156,18 @@
       </div>
       <div class="dlg-foot"><span class="err" id="fg-err"></span>
         <div class="actions"><button class="btn" type="button" id="fg-back">Terug</button><button class="btn primary" type="submit" id="fg-submit">Versturen</button></div></div>
+      <div class="login-alt">Ben je beheerder? <button class="linkbtn" type="button" id="btn-to-recover">Herstel met de installatiecode</button></div>
+    </form>
+    <form class="login" id="form-recover" novalidate hidden>
+      <div class="dlg-head"><h2>Beheerder herstellen</h2><p>Voor beheerders die hun code kwijt zijn. Je hebt de installatiecode nodig: de waarde van <code>RPB_SETUP_CODE</code> in Netlify, onder Environment variables.</p></div>
+      <div class="form" style="grid-template-columns:1fr">
+        <div class="field"><label for="rc-setup">Installatiecode</label><input id="rc-setup" type="password" autocomplete="off" required></div>
+        <div class="field"><label for="rc-name">Naam van de beheerder</label><input id="rc-name" autocomplete="username" required></div>
+        <div class="field"><label for="rc-new">Nieuwe code (minstens 12 tekens)</label><input id="rc-new" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="rc-new2">Herhaal de nieuwe code</label><input id="rc-new2" type="password" autocomplete="new-password" required></div>
+      </div>
+      <div class="dlg-foot"><span class="err" id="rcv-err"></span>
+        <div class="actions"><button class="btn" type="button" id="rcv-back">Terug</button><button class="btn primary" type="submit" id="rcv-submit">Code opslaan</button></div></div>
     </form>
     <div class="login" id="forgot-done" hidden>
       <div class="dlg-head"><h2>Melding verstuurd</h2><p id="fg-done-text">Als deze naam bij ons bekend is, neemt de beheerder zo snel mogelijk contact met je op. Je krijgt dan een tijdelijke code.</p></div>
@@ -390,8 +402,8 @@
           <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
           <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-require"> Geldig abonnement verplicht om aan te bieden en te bieden</label><span class="hint">Na de einddatum kan een handelaar alleen nog kijken, tot hij opnieuw betaalt. Beheerders en vrijgestelde gebruikers kunnen altijd handelen.</span></div>
           <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-auto"> Aanvraag automatisch goedkeuren zodra het abonnement online is betaald</label><span class="hint">Uit: je controleert elke aanvraag zelf, ook als er al betaald is.</span></div>
-          <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="number" min="0" step="0.01" inputmode="decimal"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
-          <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="number" min="0" max="100" step="0.1" inputmode="decimal"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
+          <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="text" inputmode="decimal" autocomplete="off" placeholder="bijv. 120,00"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
+          <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="text" inputmode="decimal" autocomplete="off" placeholder="21"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
           <div class="fieldset-title">Online betalen via Mollie</div>
           <div class="field full"><div class="ct-card" id="st-mollie"></div></div>
           <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Betaalmethoden</span>

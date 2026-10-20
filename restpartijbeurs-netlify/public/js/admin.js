@@ -51,11 +51,11 @@ function renderUsers() {
     </div></td></tr>`).join("") || `<tr><td colspan="6" class="sub">${uq ? "Geen gebruikers gevonden." : "Nog geen gebruikers."}</td></tr>`;
 }
 function subPill(until) {
-  const t = S.today || new Date().toISOString().slice(0, 10);
+  const t = S.today || localDate();
   if (!until) return `<span class="pill off">Geen</span>`;
   const d = new Date(until + "T12:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" });
   if (until < t) return `<span class="pill warn">Verlopen ${d}</span>`;
-  const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const soon = localDate(new Date(Date.now() + 30 * 86400000));
   return `<span class="pill ${until <= soon ? "warn" : "ok"}">Einde ${d}</span>`;
 }
 function closeMenus() { $$(".menu").forEach((m) => m.remove()); }
@@ -291,7 +291,7 @@ let payFor = null;
 async function openPayments(u) {
   payFor = u;
   $("#pay-sub").textContent = `${u.name}${u.company ? " · " + u.company : ""}${u.kvk ? " · KvK " + u.kvk : ""}`;
-  const t = S.today || new Date().toISOString().slice(0, 10);
+  const t = S.today || localDate();
   const start = u.paidUntil && u.paidUntil >= t ? u.paidUntil : t;
   $("#p-amount").value = ((S.settings?.subscriptionPrice || 0) / 100).toFixed(2);
   $("#p-paid").value = t; $("#p-until").value = addYear12(start); $("#p-note").value = ""; $("#pay-err").textContent = "";
@@ -427,7 +427,7 @@ $("#log-export").addEventListener("click", async () => {
       [new Date(x.at).toLocaleString("nl-NL"), x.user || "", KIND[x.kind] || x.kind, x.detail].map(cell).join(";")));
     const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = `logboek-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.href = URL.createObjectURL(blob); a.download = `logboek-${localDate()}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast(`${num.format(d.entries.length)} regels geëxporteerd.`);
   } catch (err) { toast(err.message); }

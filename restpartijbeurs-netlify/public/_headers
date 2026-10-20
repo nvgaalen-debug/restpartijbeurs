@@ -1,9 +1,20 @@
 # Beveiligingsheaders voor de website (Netlify leest dit bestand automatisch).
-# De pagina mag alleen met onze eigen server praten en geen scripts van buiten laden.
+# - Scripts alleen uit onze eigen bestanden (geen code in de pagina, niets van buiten).
+# - De pagina praat alleen met onze eigen server; foto's alleen van onze eigen server.
+# - style-src 'unsafe-inline' is nodig voor style-attributen in de schermen; dat laat geen code uitvoeren.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=31536000
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: same-origin
-  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Cross-Origin-Opener-Policy: same-origin
+  X-Permitted-Cross-Domain-Policies: none
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()
+
+# Opmaak en scripts: altijd controleren of er een nieuwe versie is, zodat nooit een oude
+# en een nieuwe versie door elkaar gebruikt worden na een update
+/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+/app.css
+  Cache-Control: public, max-age=0, must-revalidate

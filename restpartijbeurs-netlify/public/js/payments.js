@@ -19,9 +19,7 @@ function subState() {
 function renderSub() {
   const s = S.sub, st = subState();
   // Zonder geldig abonnement: wel kijken, niet handelen (de server controleert dit ook)
-  const couldWrite = S.canWrite;
-  S.canWrite = s ? !!s.canTrade : true;
-  if (couldWrite !== S.canWrite) render();
+  setCanWrite(s ? s.canTrade : true); // ververst het aanbod alleen als dit echt verandert
   const show = !!(s && st && s.priceExcl > 0 && S.user?.role === "handelaar" && !["ok", "exempt"].includes(st.key));
   $("#subbar").hidden = !show || document.body.classList.contains("locked");
   $("#subbar").classList.toggle("blocked", !!(s && !s.canTrade));
@@ -41,13 +39,16 @@ function renderSub() {
 }
 async function startPayment(btn) {
   if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = "Betaalpagina openen…"; }
+  let leaving = false;
   try {
     const d = await api("pay/subscription", { method: "POST" });
     try { sessionStorage.setItem("rpb.payref", d.ref); } catch {}
+    leaving = true; // knop uit laten staan terwijl de browser naar Mollie gaat (geen dubbele betaling)
     location.href = d.checkoutUrl;
   } catch (err) {
     toast(err.message);
-    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
+  } finally {
+    if (btn && !leaving) { btn.disabled = false; btn.textContent = btn.dataset.label; }
   }
 }
 $("#subbar-pay").addEventListener("click", (e) => startPayment(e.currentTarget));
@@ -60,21 +61,22 @@ async function handlePaymentReturn() {
   if (!ref || !S.token) return;
   history.replaceState(null, "", location.pathname);
   toast("Betaling controleren…");
-  for (let i = 0; i < 10; i++) {
+  const TRIES = 10;
+  for (let i = 0; i < TRIES; i++) {
     try {
       const st = await api("pay/status?ref=" + encodeURIComponent(ref));
       if (st.status === "paid") { toast(`Betaling gelukt. Einde abonnement: ${fmtDate(st.validUntil)}.`); break; }
       if (["canceled", "expired", "failed"].includes(st.status)) { toast(st.status === "canceled" ? "Betaling geannuleerd. Er is niets afgeschreven." : "De betaling is niet gelukt. Probeer het opnieuw."); break; }
     } catch (err) { toast(err.message); break; }
-    if (i === 9) toast("De betaling wordt nog verwerkt. Je ziet het resultaat over een paar minuten bij Mijn account.");
-    await new Promise((r) => setTimeout(r, 2000));
+    if (i === TRIES - 1) { toast("De betaling wordt nog verwerkt. Je ziet het resultaat over een paar minuten bij Mijn account."); break; }
+    await new Promise((r) => setTimeout(r, 2000)); // alleen wachten als er nog een poging komt
   }
   loadMySub();
 }
 
 function fillSettings() {
   const s = S.settings || {};
-  $("#st-vat").value = s.vatPercent ?? 21;
+  $("#st-vat").value = String(s.vatPercent ?? 21).replace(".", ",");
   $("#st-auto").checked = !!s.autoApprovePaid;
   $("#st-require").checked = s.requireSubscription !== false;
   $$("input[name=st-pm]").forEach((c) => (c.checked = (s.payMethods || []).includes(c.value)));
@@ -87,7 +89,7 @@ function fillSettings() {
   $("#st-testmail-row").hidden = !s.mailEnabled;
   $("#wipe-panel").hidden = !s.wipeAllowed;
   $("#st-name").value = s.siteName || ""; $("#st-welcome").value = s.welcomeText || ""; $("#st-ann").value = s.announcement || "";
-  $("#st-reg").checked = s.registrationOpen !== false; $("#st-price").value = ((s.subscriptionPrice || 0) / 100).toFixed(2); $("#st-subtext").value = s.subscriptionText || "";
+  $("#st-reg").checked = s.registrationOpen !== false; $("#st-price").value = ((s.subscriptionPrice || 0) / 100).toFixed(2).replace(".", ","); $("#st-subtext").value = s.subscriptionText || "";
   $("#st-err").textContent = "";
 }
 $("#wipe-btn").addEventListener("click", async () => {
@@ -113,11 +115,19 @@ $("#st-testmail-btn").addEventListener("click", async () => {
 });
 $("#form-settings").addEventListener("submit", async (e) => {
   e.preventDefault();
+  $("#st-err").textContent = "";
+  // Prijs en btw expliciet als getal versturen (prijs in hele centen). Een veld dat de browser
+  // niet kan lezen is leeg; dat mag nooit stilletjes € 0 of 0% worden.
+  const priceCents = parseEuroCents($("#st-price").value);
+  const vatRaw = String($("#st-vat").value).replace(",", ".").replace("%", "").trim();
+  const vat = vatRaw === "" ? NaN : Number(vatRaw);
+  if (priceCents === null || priceCents > 10000000) { $("#st-err").textContent = "Vul een geldige abonnementsprijs in, bijvoorbeeld 120 of 120,50. Gratis? Vul dan 0 in."; $("#st-price").focus(); return; }
+  if (!Number.isFinite(vat) || vat < 0 || vat > 100) { $("#st-err").textContent = "Vul een btw-percentage in tussen 0 en 100, bijvoorbeeld 21."; $("#st-vat").focus(); return; }
   try {
     const d = await api("admin/settings", { method: "PUT", body: {
       siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
-      registrationOpen: $("#st-reg").checked, subscriptionPrice: $("#st-price").value || "0", subscriptionText: $("#st-subtext").value,
-      vatPercent: $("#st-vat").value || "0", autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
+      registrationOpen: $("#st-reg").checked, subscriptionPriceCents: priceCents, subscriptionText: $("#st-subtext").value,
+      vatPercent: vat, autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
     } });
     applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");
   } catch (err) { $("#st-err").textContent = err.message; }

@@ -148,7 +148,7 @@ function renderBids() {
     const l = lotsById.get(lotId);
     let status;
     if (!l) status = { label: "Partij verwijderd", cls: "off", open: false };
-    else if (l.accepted && l.accepted[S.me]) status = { label: `Gegund: ${num.format(l.accepted[S.me].qty)} ${l.unit}`, cls: "ok", open: false };
+    else if (l.accepted && l.accepted[S.me]) status = { label: `Gegund: ${num.format(l.accepted[S.me].qty)} ${esc(l.unit)}`, cls: "ok", open: false };
     else if (l.rejected && l.rejected[S.me]) status = { label: "Afgewezen", cls: "off", open: false };
     else { const st = lotState(l); status = st.closed ? { label: "Niet gegund", cls: "off", open: false } : { label: "In behandeling", cls: "acc", open: true }; }
     return { lotId, o, l, status };
@@ -180,16 +180,25 @@ function renderStatus() {
   const el = $("#status");
   if (S.offline && S.token) {
     el.hidden = false;
-    el.innerHTML = `<strong>Geen verbinding met de server.</strong> Wat je ziet kan verouderd zijn. De pagina probeert het elke 8 seconden opnieuw.`;
+    el.innerHTML = `<strong>Geen verbinding met de server.</strong> Wat je ziet kan verouderd zijn. De pagina probeert het elke 30 seconden opnieuw.`;
+  } else if (typeof pausedForIdle !== "undefined" && pausedForIdle && S.token) {
+    el.hidden = false;
+    el.textContent = "Bijwerken gepauzeerd omdat je even niets hebt gedaan. Beweeg je muis of tik op het scherm om de nieuwste partijen en biedingen te zien.";
   } else el.hidden = true;
   $("#btn-new").hidden = !(S.me && S.canWrite !== false);
 }
 
+// Niet opnieuw beginnen terwijl we al aan het renderen zijn; dan nog één keer erna
+let rendering = false;
 function render() {
-  renderStatus();
-  renderMarket();
-  renderMine();
-  renderBids();
+  if (rendering) { scheduleRender(); return; }
+  rendering = true;
+  try {
+    renderStatus();
+    renderMarket();
+    renderMine();
+    renderBids();
+  } finally { rendering = false; }
 }
 
 // ---------- view switching ----------
@@ -213,7 +222,7 @@ function openLotDialog(lotId) {
   const l = lotId ? doc.items[lotId] : null;
   $("#lot-title").textContent = l ? "Partij bewerken" : "Partij aanbieden";
   $("#lot-submit").textContent = l ? "Opslaan" : "Publiceren";
-  const tomorrow = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const tomorrow = localDate(new Date(Date.now() + 3 * 86400000));
   const v = (id, val) => ($(id).value = val ?? "");
   v("#f-product", l?.product); v("#f-ras", l?.ras); v("#f-cat", l?.category || "Groente"); v("#f-klasse", l?.klasse || "Klasse I");
   v("#f-herkomst", l?.origin || "NL"); v("#f-loc", l?.location); v("#f-qty", l?.qty); v("#f-unit", l?.unit || "colli");
@@ -290,7 +299,8 @@ dlgLot.addEventListener("close", () => {
 const dlgContact = $("#dlg-contact");
 function parseContact(s) {
   const text = String(s || "").trim();
-  const email = (text.match(/[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/) || [])[0] || "";
+  // Alleen een "schoon" e-mailadres gebruiken in de mailto-link (geen ?, &, cc= of bcc= erachter)
+  const email = (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [])[0] || "";
   const phoneRaw = (text.replace(email, "").match(/\+?[\d][\d\s\-().]{7,}\d/) || [])[0] || "";
   let digits = phoneRaw.replace(/[^\d+]/g, "");
   let intl = digits.startsWith("+") ? digits.slice(1) : digits.startsWith("00") ? digits.slice(2) : digits.startsWith("0") ? "31" + digits.slice(1) : digits;
@@ -318,7 +328,7 @@ function openContact(sellerId, lotId) {
   const updateLinks = () => {
     const msg = $("#ct-msg").value;
     const wa = $("#ct-wa"); if (wa) wa.href = "https://wa.me/" + c.wa + "?text=" + encodeURIComponent(msg);
-    const mail = $("#ct-mail"); if (mail) mail.href = "mailto:" + c.email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(msg);
+    const mail = $("#ct-mail"); if (mail) mail.href = "mailto:" + encodeURIComponent(c.email).replace(/%40/g, "@") + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(msg);
   };
   updateLinks();
   $("#ct-msg").oninput = updateLinks;

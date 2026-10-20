@@ -52,7 +52,7 @@ async function showLogin(msg) {
     return;
   }
   // Heeft de gebruiker intussen al 'Account aanvragen' geopend, laat dat dan staan.
-  const busy = !needsSetup && ["#form-register", "#reg-done", "#form-forgot", "#forgot-done", "#form-reset"].some((id) => !$(id).hidden);
+  const busy = !needsSetup && ["#form-register", "#reg-done", "#form-forgot", "#forgot-done", "#form-reset", "#form-recover"].some((id) => !$(id).hidden);
   $("#form-setup").hidden = !needsSetup;
   if (busy) return;
   $("#form-login").hidden = needsSetup;
@@ -62,7 +62,7 @@ async function showLogin(msg) {
 }
 
 // ---------- account aanvragen ----------
-function showLoginForm() { $("#form-reset").hidden = true; $("#form-register").hidden = true; $("#reg-done").hidden = true; $("#form-forgot").hidden = true; $("#forgot-done").hidden = true; $("#form-login").hidden = false; $("#l-name").focus(); }
+function showLoginForm() { $("#form-recover").hidden = true; $("#form-reset").hidden = true; $("#form-register").hidden = true; $("#reg-done").hidden = true; $("#form-forgot").hidden = true; $("#forgot-done").hidden = true; $("#form-login").hidden = false; $("#l-name").focus(); }
 $("#btn-forgot").addEventListener("click", () => {
   $("#form-login").hidden = true; $("#form-forgot").hidden = false; $("#fg-err").textContent = "";
   $("#fg-name").value = $("#l-name").value.trim(); ($("#fg-name").value ? $("#fg-contact") : $("#fg-name")).focus();
@@ -103,6 +103,26 @@ $("#form-reset").addEventListener("submit", async (e) => {
 });
 ["#fg-name", "#fg-contact"].forEach((id) => $(id).addEventListener("input", () => ($("#fg-err").textContent = "")));
 $("#fg-done-back").addEventListener("click", showLoginForm);
+// Beheerder herstellen met de installatiecode
+$("#btn-to-recover").addEventListener("click", () => {
+  $("#form-forgot").hidden = true; $("#form-recover").hidden = false; $("#rcv-err").textContent = "";
+  $("#rc-name").value = $("#fg-name").value.trim(); $("#rc-setup").focus();
+});
+$("#rcv-back").addEventListener("click", showLoginForm);
+$("#form-recover").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const setupCode = $("#rc-setup").value, name = $("#rc-name").value.trim(), code = $("#rc-new").value;
+  const err = !setupCode ? "Vul de installatiecode in." : !name ? "Vul de naam van de beheerder in." : code.length < 12 ? "De nieuwe code moet minstens 12 tekens hebben." : code !== $("#rc-new2").value ? "De twee codes zijn niet gelijk." : "";
+  if (err) { $("#rcv-err").textContent = err; return; }
+  const btn = $("#rcv-submit"); btn.disabled = true;
+  try {
+    const d = await api("recover", { method: "POST", body: { setupCode, name, code } });
+    ["#rc-setup", "#rc-new", "#rc-new2"].forEach((id) => ($(id).value = ""));
+    showLoginForm(); $("#l-name").value = d.name || name; $("#l-code").focus();
+    $("#login-err").textContent = "Je nieuwe code is opgeslagen. Log hiermee in.";
+  } catch (ex) { $("#rcv-err").textContent = ex.message; }
+  finally { btn.disabled = false; }
+});
 $("#form-forgot").addEventListener("submit", async (e) => {
   e.preventDefault();
   const name = $("#fg-name").value.trim(), contact = $("#fg-contact").value.trim();
