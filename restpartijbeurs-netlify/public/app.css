@@ -54,7 +54,7 @@ header.top {
 .top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-block: 12px 4px; }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .brand h1 { font-family: var(--font-display); font-weight: 700; font-size: 28px; letter-spacing: .01em; margin: 0; text-transform: uppercase; line-height: 1; }
-.brand span { color: var(--muted); font-size: 13px; }
+.brand span { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 42ch; }
 @media (max-width: 480px) { .brand span { display: none; } .brand h1 { font-size: 24px; } }
 .tabs { display: flex; gap: 4px; overflow-x: auto; }
 .tab {
@@ -422,3 +422,35 @@ dialog.wide { width: min(760px, calc(100vw - 32px)); }
 /* Donkere weergave: logo's zijn meestal voor een lichte achtergrond gemaakt */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand-logo, :root:not([data-theme="light"]) .logo-prev-head img { background: #fff; padding: 3px 8px; border-radius: 6px; } }
 :root[data-theme="dark"] .brand-logo, :root[data-theme="dark"] .logo-prev-head img { background: #fff; padding: 3px 8px; border-radius: 6px; }
+
+/* ---------- telefoon: tegels met iconen in plaats van tabbladen, knop "Partij aanbieden" rechtsonder ---------- */
+.tab-ico { display: none; }
+@media (max-width: 600px) {
+  .top-row { flex-wrap: nowrap; padding-block: 10px 6px; }
+  .top-row .brand { flex: 1 1 auto; }
+  .top-row .right { flex: 0 1 auto; flex-wrap: nowrap; }
+  .user button.who { max-width: 34vw; padding: 6px 4px; }
+  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; overflow: visible; padding: 6px 0 12px; }
+  .tab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    min-height: 76px; padding: 10px 4px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+    font-family: var(--font-body); font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: normal; text-align: center; line-height: 1.2; }
+  .tab[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .tab-ico { display: block; width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .tab .n { position: absolute; top: 6px; right: 6px; margin: 0; vertical-align: 0; min-width: 20px; text-align: center; }
+  .tab[aria-selected="true"] .n { background: var(--accent); color: var(--accent-ink); }
+  .tab .n.alert { background: var(--warn); color: #fff; }
+  #btn-new { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30; border-radius: 99px;
+    padding: 14px 20px 14px 16px; font-size: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+  #btn-new .fab-plus { font-size: 22px; line-height: 1; margin-right: 2px; }
+  main.wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .toast { bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 360px) { .tab { font-size: 12px; min-height: 70px; } .tab-ico { width: 24px; height: 24px; } }
+@media (max-width: 600px) {
+  .top-row .brand { min-width: 0; overflow: hidden; }
+  .brand-logo { height: 28px; max-width: 100%; }
+  .top-row .right { flex: 0 0 auto; max-width: 58%; }
+  .user { min-width: 0; }
+  .user button.who { max-width: 30vw; font-size: 13px; }
+  #btn-logout { padding: 5px 8px; }
+}

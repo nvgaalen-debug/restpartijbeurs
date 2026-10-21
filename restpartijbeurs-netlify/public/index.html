@@ -116,20 +116,20 @@
 <header class="top">
   <div class="wrap">
     <div class="top-row">
-      <div class="brand"><img class="brand-logo" id="site-logo" alt="" hidden><h1 id="site-name">Restpartijbeurs</h1><span>Aardappelen · groente · fruit</span></div>
+      <div class="brand"><img class="brand-logo" id="site-logo" alt="" hidden><h1 id="site-name">Restpartijbeurs</h1><span id="site-tagline">Aardappelen · groente · fruit</span></div>
       <div class="right">
         <div class="user" id="user-box" hidden>
           <button class="who" id="btn-account" type="button" title="Mijn account"></button>
           <button class="btn small ghost" id="btn-logout" type="button">Uitloggen</button>
         </div>
-        <button class="btn primary" id="btn-new" type="button">+ Partij aanbieden</button>
+        <button class="btn primary" id="btn-new" type="button"><span class="fab-plus" aria-hidden="true">+</span><span class="fab-text"> Partij aanbieden</span></button>
       </div>
     </div>
     <nav class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tab-market" data-view="market" aria-selected="true">Aanbod <span class="n" id="n-market">0</span></button>
-      <button class="tab" role="tab" id="tab-mine" data-view="mine" aria-selected="false">Mijn partijen <span class="n" id="n-mine">0</span></button>
-      <button class="tab" role="tab" id="tab-bids" data-view="bids" aria-selected="false">Mijn biedingen <span class="n" id="n-bids">0</span></button>
-      <button class="tab" role="tab" id="tab-admin" data-view="admin" aria-selected="false" hidden>Beheer <span class="n alert" id="n-pending" hidden>0</span></button>
+      <button class="tab" role="tab" id="tab-market" data-view="market" aria-selected="true"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.5L5 4h14l1.5 5.5"/><path d="M3.5 9.5h17v10.5h-17z"/><path d="M9.5 20v-5.5h5V20"/></svg><span class="tab-label">Aanbod</span> <span class="n" id="n-market">0</span></button>
+      <button class="tab" role="tab" id="tab-mine" data-view="mine" aria-selected="false"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/></svg><span class="tab-label">Mijn partijen</span> <span class="n" id="n-mine">0</span></button>
+      <button class="tab" role="tab" id="tab-bids" data-view="bids" aria-selected="false"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5V4h8.5L21 13.5 13.5 21z"/><circle cx="7.6" cy="8.6" r="1.6"/></svg><span class="tab-label">Mijn biedingen</span> <span class="n" id="n-bids">0</span></button>
+      <button class="tab" role="tab" id="tab-admin" data-view="admin" aria-selected="false" hidden><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="tab-label">Beheer</span> <span class="n alert" id="n-pending" hidden>0</span></button>
     </nav>
   </div>
 </header>
@@ -423,7 +423,7 @@
               <span class="hint">Verschijnt bovenaan elke pagina, in het tabblad van de browser, in e-mails en als icoon wanneer iemand de site op het beginscherm van zijn telefoon zet. PNG met doorzichtige achtergrond of SVG werkt het mooist. Staat de naam al in het logo, zet dan "Naam naast het logo" uit. Voor het app-icoon gebruikt de app het logo, of een apart (vierkant) beeldmerk als je dat kiest.</span>
             </div>
           </div>
-          <div class="field full"><label for="st-welcome">Welkomsttekst op het inlogscherm</label><textarea id="st-welcome" rows="3" maxlength="1000" placeholder="bijv. Dé handelsplek voor restpartijen AGF in de regio."></textarea></div>
+          <div class="field full"><label for="st-welcome">Welkomsttekst op het inlogscherm</label><textarea id="st-welcome" rows="3" maxlength="1000" placeholder="bijv. Dé handelsplek voor restpartijen AGF in de regio."></textarea><span class="hint">Staat ook bovenaan elke pagina, naast de naam (houd het kort: een lange tekst wordt daar afgekapt). Leeg: "Aardappelen · groente · fruit".</span></div>
           <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
           <div class="fieldset-title">Aanmelden en abonnement</div>
           <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
