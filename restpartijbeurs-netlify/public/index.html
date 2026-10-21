@@ -447,9 +447,9 @@
   </section>
 </main>
 
-<dialog id="dlg-lot">
+<dialog id="dlg-lot" class="sheet">
   <form id="form-lot" novalidate>
-    <div class="dlg-head"><h2 id="lot-title">Partij aanbieden</h2><p>Vul de gegevens van de restpartij in. Alle velden zijn zichtbaar voor kopers.</p></div>
+    <div class="dlg-head"><h2 id="lot-title" tabindex="-1" autofocus>Partij aanbieden</h2><p>Vul de gegevens van de restpartij in. Alle velden zijn zichtbaar voor kopers.</p></div>
     <div class="form">
       <div class="field full ai-strip" id="ai-strip" hidden>
         <div class="ai-strip-row">
@@ -469,11 +469,11 @@
       <div class="field"><label for="f-herkomst">Herkomst</label><input id="f-herkomst" placeholder="NL" list="dl-landen"></div>
       <div class="field"><label for="f-loc">Afhaallocatie</label><input id="f-loc" placeholder="bijv. Barendrecht"></div>
       <div class="field"><label for="f-qty">Hoeveelheid</label>
-        <div class="inline"><input id="f-qty" type="number" min="1" step="1" inputmode="numeric" required placeholder="240">
+        <div class="inline"><input id="f-qty" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="next" required placeholder="240">
         <select id="f-unit" aria-label="Eenheid"><option>colli</option><option>kg</option><option>pallets</option><option>kisten</option><option>zakken</option></select></div></div>
-      <div class="field" id="f-kg-field"><label for="f-kg">Gewicht per eenheid (kg)</label><input id="f-kg" type="number" min="0" step="0.1" inputmode="decimal" placeholder="bijv. 6"><span class="hint">Voor de statistieken: hoeveel kg zit er in één eenheid.</span></div>
-      <div class="field"><label for="f-minqty">Minimale afname</label><input id="f-minqty" type="number" min="1" step="1" inputmode="numeric" placeholder="1"></div>
-      <div class="field"><label for="f-price">Vraagprijs per eenheid (€)</label><input id="f-price" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="6,50"></div>
+      <div class="field" id="f-kg-field"><label for="f-kg">Gewicht per eenheid (kg)</label><input id="f-kg" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="bijv. 6"><span class="hint">Voor de statistieken: hoeveel kg zit er in één eenheid.</span></div>
+      <div class="field"><label for="f-minqty">Minimale afname</label><input id="f-minqty" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="next" placeholder="1"></div>
+      <div class="field"><label for="f-price">Vraagprijs per eenheid (€)</label><input id="f-price" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" required placeholder="6,50"></div>
       <div class="field"><label for="f-until">Houdbaar / beschikbaar tot</label><input id="f-until" type="date" required></div>
       <div class="field full"><label for="f-pack">Verpakking</label><input id="f-pack" placeholder="bijv. 6 kg doos, 80 per pallet"></div>
       <div class="field full"><label for="f-note">Toelichting</label><textarea id="f-note" placeholder="Waarom restpartij, kwaliteit, maatsortering, afleveringsvoorwaarden"></textarea></div>
@@ -482,7 +482,7 @@
         <input id="f-photo" type="file" accept="image/*" multiple hidden>
         <span class="hint" id="photo-hint">Eerste foto is de hoofdfoto. Foto's worden verkleind voor ze worden opgeslagen.</span></div>
       <div class="fieldset-title">Jouw bedrijf</div>
-      <div class="field"><label for="f-company">Bedrijfsnaam</label><input id="f-company" required></div>
+      <div class="field"><label for="f-company">Bedrijfsnaam</label><input id="f-company" autocomplete="organization" required></div>
       <div class="field"><label for="f-phone">Telefoon of e-mail</label><input id="f-phone" placeholder="Zichtbaar voor iedereen"></div>
     </div>
     <div class="dlg-foot"><span class="err" id="lot-err"></span>
@@ -490,16 +490,16 @@
   </form>
 </dialog>
 
-<dialog id="dlg-bid">
+<dialog id="dlg-bid" class="sheet">
   <form id="form-bid" novalidate>
-    <div class="dlg-head"><h2>Bod uitbrengen</h2><p id="bid-sub"></p></div>
+    <div class="dlg-head"><h2 tabindex="-1" autofocus>Bod uitbrengen</h2><p id="bid-sub"></p></div>
     <div class="form">
-      <div class="field"><label for="b-price">Jouw prijs per eenheid (€)</label><input id="b-price" type="number" min="0" step="0.01" inputmode="decimal" required></div>
-      <div class="field"><label for="b-qty">Hoeveelheid</label><input id="b-qty" type="number" min="1" step="1" inputmode="numeric" required><span class="hint" id="b-qty-hint"></span></div>
+      <div class="field"><label for="b-price">Jouw prijs per eenheid (€)</label><input id="b-price" type="text" inputmode="decimal" autocomplete="off" required></div>
+      <div class="field"><label for="b-qty">Hoeveelheid</label><input id="b-qty" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required><span class="hint" id="b-qty-hint"></span></div>
       <div class="sumline" id="b-sum"></div>
       <div class="field full"><label for="b-note">Opmerking voor verkoper</label><textarea id="b-note" placeholder="bijv. ophalen morgen voor 10:00"></textarea></div>
       <div class="fieldset-title">Jouw bedrijf</div>
-      <div class="field"><label for="b-company">Bedrijfsnaam</label><input id="b-company" required></div>
+      <div class="field"><label for="b-company">Bedrijfsnaam</label><input id="b-company" autocomplete="organization" required></div>
       <div class="field"><label for="b-phone">Telefoon of e-mail</label><input id="b-phone"></div>
     </div>
     <div class="dlg-foot"><span class="err" id="bid-err"></span>
@@ -532,7 +532,7 @@
 
 <dialog id="dlg-account">
   <form id="form-account" novalidate>
-    <div class="dlg-head"><h2>Mijn account</h2><p id="acc-sub"></p></div>
+    <div class="dlg-head"><h2>Mijn account</h2><p id="acc-who"></p></div>
     <div class="form">
       <div class="field"><label for="a-company">Bedrijfsnaam</label><input id="a-company"></div>
       <div class="field"><label for="a-contact">Telefoon of e-mail</label><input id="a-contact"></div>

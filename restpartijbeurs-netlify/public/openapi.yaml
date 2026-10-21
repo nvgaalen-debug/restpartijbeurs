@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: FoodSource API
-  version: "1.0.0"
+  version: "1.1.0"
   summary: ERP-independent API for offering surplus produce lots on FoodSource.
   description: |
     Lets an ERP, WMS or inventory system offer surplus lots (fruit, vegetables, potatoes),
@@ -13,8 +13,26 @@ info:
 
     **Scope**: a key only sees and changes lots of its own company.
 
-    **Errors** always have the shape `{"error": {"code", "message", "field"}}`. `code` is stable,
-    `message` is for humans.
+    **Who manages what**: the ERP manages the lot data (product, quantity, price, dates, codes).
+    The FoodSource app manages photos, bids and awards. **Awards can only be made in the FoodSource
+    app by the seller**; the API gives read-only access to bids and awards and reports new awards as
+    `lot.awarded` events.
+
+    **Price basis**: `price.amount` is the asking price **per unit** (the lot's `unit`), in EUR,
+    **excluding VAT**, for pickup at the lot's `location` (ex works). Transport is arranged between
+    buyer and seller outside FoodSource.
+
+    **Quantities**: whole numbers for `case`, `pallet`, `crate` and `bag`; decimals only for `kg`.
+
+    **Safe retries**: use `PUT /lots/by-external-id/{externalId}` to create or fully update a lot
+    and `PATCH /lots/ext:{externalId}` to change only some fields; both are safe to repeat.
+    `POST /lots` requires an `externalId` and refuses a second lot with the same one (409).
+    `externalId` cannot be changed once it is set.
+
+    **Errors** always have the shape
+    `{"error": {"code", "message", "field", "details": [{"field", "message"}], "traceId"}}`.
+    `code` is stable, `message` is for humans. Every response carries the header
+    `FoodSource-Request-Id` (equal to `traceId` on errors); quote it in support questions.
 
     **Rate limit**: 120 requests per minute per key; above that `429` with `Retry-After` (seconds).
 
@@ -22,6 +40,11 @@ info:
     also available via `GET /events`. See the `webhooks` section for payloads and signatures.
 
     **Compatibility**: v1 only gets additions. Ignore unknown fields and unknown event types.
+
+    **Changes in 1.1.0**: paging on `GET /lots` (`limit`, `cursor`, `nextCursor`, `hasMore`);
+    `after`/`next` on `/events` are strings; separate write and response models (`externalId` may
+    be `null` in responses); `externalId` required on `POST /lots` and fixed once set; whole
+    numbers except for `kg`; `details` and `traceId` in errors; `ping` webhook documented.
 servers:
   - url: https://{host}/api/v1
     description: FoodSource (test or production)
@@ -80,9 +103,19 @@ paths:
     get:
       tags: [Lots]
       operationId: listLots
-      summary: List own lots
-      description: "Scope: `lots:read`. Sorted by `updatedAt`, newest first."
+      summary: List own lots, page by page
+      description: |
+        Scope: `lots:read`. Sorted by `createdAt`, oldest first (then by `id`), so paging stays stable
+        when lots are added. Pass `nextCursor` as `cursor` while `hasMore` is true.
+        For a periodic sync, combine with `updatedSince`.
       parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - name: cursor
+          in: query
+          description: Opaque value from `nextCursor` of the previous page.
+          schema: { type: string }
         - name: status
           in: query
           schema: { $ref: "#/components/schemas/LotStatus" }
@@ -97,11 +130,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [data]
+                required: [data, nextCursor, hasMore]
                 properties:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/Lot" }
+                  nextCursor:
+                    type: [string, "null"]
+                    description: Pass as `cursor` to get the next page; null on the last page.
+                  hasMore: { type: boolean }
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -112,13 +149,14 @@ paths:
       summary: Create a lot
       description: |
         Scope: `lots:write`; requires a valid subscription.
-        Creates a new lot on every call unless `externalId` already exists (409).
-        Prefer `PUT /lots/by-external-id/{externalId}`, which is safe to repeat.
+        `externalId` is required, so a retry after a timeout cannot create a second lot: the retry gets
+        409 with `field: "externalId"`. Prefer `PUT /lots/by-external-id/{externalId}`, which creates or
+        updates and is safe to repeat.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LotInput" }
+            schema: { $ref: "#/components/schemas/LotCreateInput" }
             example:
               externalId: "ITEM1000:LOT2026-14"
               product: Elstar
@@ -148,8 +186,9 @@ paths:
       summary: Create or fully update a lot by its ERP number (upsert)
       description: |
         Scope: `lots:write`; requires a valid subscription.
-        Safe to repeat: the same body causes no change. Writable fields that are left out are cleared;
-        awards, photos and a withdrawal stay as they are. Read-only fields in the body are ignored.
+        Safe to repeat: the same body causes no change. This is a full replacement: writable fields that
+        are left out are cleared (use `PATCH /lots/ext:{externalId}` to change only some fields).
+        Awards, photos and a withdrawal stay as they are. Read-only fields in the body are ignored.
         `quantity` is the total offered quantity including what was already awarded, and cannot be
         lower than the awarded quantity.
       parameters:
@@ -202,13 +241,16 @@ paths:
       summary: Change only the fields sent
       description: |
         Scope: `lots:write`; requires a valid subscription.
-        Sending a read-only field (`id`, `status`, `remainingQuantity`, `awards`, `createdAt`,
-        `updatedAt`, `photos`, `withdrawal`) returns 400. `null` clears an optional field.
+        Only the fields sent are changed; safe to repeat. Use `ext:{externalId}` as `{id}` to address a lot
+        by its ERP number. Sending a read-only field (`id`, `status`, `remainingQuantity`, `awards`,
+        `createdAt`, `updatedAt`, `photos`, `withdrawal`) returns 400. `null` clears an optional field.
+        `externalId` can only be set on a lot that has none yet (made in the app); once set it cannot
+        be changed or removed (400).
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LotPatch" }
+            schema: { $ref: "#/components/schemas/LotPatchInput" }
             example:
               quantity: 200
               price: { amount: 6.25 }
@@ -272,7 +314,9 @@ paths:
       tags: [Bids]
       operationId: listLotBids
       summary: Bids on an own lot, highest price first
-      description: "Scope: `bids:read`."
+      description: |
+        Scope: `bids:read`. Read-only: accepting or rejecting a bid is done by the seller in the
+        FoodSource app; the result arrives as a `lot.awarded` event.
       responses:
         "200":
           description: Bids
@@ -298,10 +342,12 @@ paths:
       description: |
         Scope: `lots:read`. Same events and ids as the webhook. Store the last processed id and call
         again with `after=<that id>` while `hasMore` is true. Events are kept for 30 days.
+        An event can arrive twice (webhook and polling, or a retry): process each `id` only once.
       parameters:
         - name: after
           in: query
-          schema: { type: integer, minimum: 0, default: 0 }
+          description: The `next` value of the previous call (an event id, digits only).
+          schema: { type: string, pattern: "^\\d{1,18}$", default: "0" }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
@@ -322,11 +368,30 @@ paths:
                     description: Id to pass as `after` next time.
                   hasMore:
                     type: boolean
+        "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
 webhooks:
+  ping:
+    post:
+      summary: ping
+      description: |
+        Sent when the company clicks "Testbericht sturen" in the app. Same headers and signature as
+        other events; `FoodSource-Delivery` starts with `test_` and the event is not stored or retried.
+        Answer 2xx; no processing needed.
+      parameters:
+        - $ref: "#/components/parameters/HookEvent"
+        - $ref: "#/components/parameters/HookDelivery"
+        - $ref: "#/components/parameters/HookSignature"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PingEvent" }
+      responses:
+        "2XX":
+          description: Received
   lotAwarded:
     post:
       summary: lot.awarded
@@ -339,6 +404,10 @@ webhooks:
 
         Success = any 2xx within 5 seconds. Redirects are not followed. Retries after 1, 5 and 15
         minutes and 1, 3, 6, 12 and 24 hours, then delivery stops (still available via `GET /events`).
+
+        **Process each event once**: `FoodSource-Delivery` equals the event `id` and stays the same on
+        every retry and in `GET /events`. Store it before processing and skip ids you have already
+        processed. Answer 2xx first and process afterwards.
       parameters:
         - $ref: "#/components/parameters/HookEvent"
         - $ref: "#/components/parameters/HookDelivery"
@@ -409,13 +478,18 @@ components:
       required: true
       schema: { type: string, pattern: "^t=\\d+,v1=[a-f0-9]{64}$" }
 
+  headers:
+    RequestId:
+      description: Id of this request; equal to `error.traceId`. Quote it in support questions.
+      schema: { type: string }
+
   responses:
     ValidationError:
       description: Invalid field (`field` names it) or invalid JSON
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
-          example: { error: { code: validation_error, message: "category must be one of: vegetables, fruit, potatoes.", field: category } }
+          example: { error: { code: validation_error, message: "category must be one of: vegetables, fruit, potatoes.", field: category, details: [{ field: category, message: "category must be one of: vegetables, fruit, potatoes." }], traceId: 01JABCDEF0123456789 } }
     Unauthorized:
       description: Missing, invalid or revoked key, or key of the other environment
       content:
@@ -463,13 +537,23 @@ components:
       properties:
         error:
           type: object
-          required: [code, message, field]
+          required: [code, message, field, details, traceId]
           properties:
             code:
               type: string
               enum: [validation_error, unauthorized, subscription_required, forbidden, not_found, method_not_allowed, conflict, too_large, rate_limited]
             message: { type: string }
             field: { type: [string, "null"], examples: [price.amount] }
+            details:
+              type: array
+              description: Per field what is wrong. Empty when the error is not about a field.
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+            traceId: { type: string, description: Same as the FoodSource-Request-Id header. }
 
     Me:
       type: object
@@ -521,10 +605,10 @@ components:
     Unit: { type: string, enum: [case, kg, pallet, crate, bag], description: "case = colli, crate = kist" }
     LotStatus: { type: string, enum: [open, sold, withdrawn, expired] }
 
-    LotFields:
+    LotWriteFields:
+      description: The lot fields an ERP can write. `externalId` is handled per operation (see the input models).
       type: object
       properties:
-        externalId: { $ref: "#/components/schemas/ExternalId" }
         product: { type: string, minLength: 1, maxLength: 80, examples: [Elstar] }
         variety: { type: [string, "null"], maxLength: 80 }
         category: { $ref: "#/components/schemas/Category" }
@@ -537,26 +621,42 @@ components:
         location: { type: [string, "null"], maxLength: 80 }
         gln: { type: [string, "null"], pattern: "^\\d{13}$", description: GS1 GLN with valid check digit }
         gtin: { type: [string, "null"], pattern: "^(\\d{8}|\\d{12}|\\d{13}|\\d{14})$", description: GS1 GTIN with valid check digit }
-        quantity: { type: number, exclusiveMinimum: 0, maximum: 10000000 }
+        quantity: { type: number, exclusiveMinimum: 0, maximum: 10000000, description: "Total offered quantity in `unit`, including what was already awarded. Whole number unless unit is kg." }
         unit: { $ref: "#/components/schemas/Unit" }
         weightPerUnitKg: { type: [number, "null"], exclusiveMinimum: 0, maximum: 100000, description: Always 1 when unit is kg }
-        minQuantity: { type: [number, "null"], exclusiveMinimum: 0, description: Not larger than quantity }
-        price: { $ref: "#/components/schemas/Money" }
+        minQuantity: { type: [number, "null"], exclusiveMinimum: 0, description: "Smallest quantity a buyer may bid on; not larger than quantity. Whole number unless unit is kg." }
+        price:
+          $ref: "#/components/schemas/Money"
+          description: Asking price per unit, excluding VAT, for pickup at `location` (ex works).
         availableUntil: { type: [string, "null"], format: date }
         packaging: { type: [string, "null"], maxLength: 120 }
         note: { type: [string, "null"], maxLength: 1000 }
 
-    LotInput:
+    LotCreateInput:
+      description: Body of `POST /lots`. `externalId` is required.
       allOf:
-        - $ref: "#/components/schemas/LotFields"
-        - required: [product, category, quantity, unit, price]
+        - $ref: "#/components/schemas/LotWriteFields"
+        - type: object
+          required: [externalId, product, category, quantity, unit, price]
+          properties:
+            externalId: { $ref: "#/components/schemas/ExternalId" }
     LotUpsertInput:
-      description: Like LotInput; externalId comes from the path (if sent in the body it must be equal).
+      description: Body of `PUT /lots/by-external-id/{externalId}`. Full replacement; `externalId` comes from the path (if sent in the body it must be equal).
       allOf:
-        - $ref: "#/components/schemas/LotFields"
-        - required: [product, category, quantity, unit, price]
-    LotPatch:
-      $ref: "#/components/schemas/LotFields"
+        - $ref: "#/components/schemas/LotWriteFields"
+        - type: object
+          required: [product, category, quantity, unit, price]
+          properties:
+            externalId: { $ref: "#/components/schemas/ExternalId" }
+    LotPatchInput:
+      description: Body of `PATCH /lots/{id}`. Only the fields sent are changed.
+      allOf:
+        - $ref: "#/components/schemas/LotWriteFields"
+        - type: object
+          properties:
+            externalId:
+              $ref: "#/components/schemas/ExternalId"
+              description: Only for a lot without externalId (made in the app). Cannot be changed or removed once set.
 
     Party:
       type: object
@@ -578,12 +678,16 @@ components:
         awardedAt: { type: string, format: date-time }
 
     Lot:
+      description: A lot as FoodSource returns it.
       allOf:
-        - $ref: "#/components/schemas/LotFields"
+        - $ref: "#/components/schemas/LotWriteFields"
         - type: object
+          required: [id, externalId, product, category, quantity, unit, price, status, remainingQuantity, createdAt, updatedAt]
           properties:
             id: { type: string, readOnly: true, examples: [L3f2a9c1e5b7d4e8a9c] }
-            externalId: { type: [string, "null"] }
+            externalId:
+              type: [string, "null"]
+              description: Null for lots made in the FoodSource app.
             status: { $ref: "#/components/schemas/LotStatus" }
             remainingQuantity: { type: number, readOnly: true }
             photos:
@@ -623,7 +727,7 @@ components:
       type: object
       required: [id, type, createdAt, data]
       properties:
-        id: { type: string, description: Increasing; the same in the webhook and in GET /events }
+        id: { type: string, pattern: "^\\d+$", description: "Increasing number as text; the same in the webhook (`FoodSource-Delivery`) and in GET /events. Use it to process each event once." }
         type: { type: string, examples: [lot.awarded, bid.received] }
         createdAt: { type: string, format: date-time }
         data:
@@ -665,6 +769,22 @@ components:
             note: { type: [string, "null"] }
             placedAt: { type: string, format: date-time }
             updated: { type: boolean, description: true when an existing bid was changed }
+
+    PingEvent:
+      type: object
+      properties:
+        id: { type: string, examples: [test_3f2a9c1e5b7d] }
+        type: { const: ping }
+        createdAt: { type: string, format: date-time }
+        data:
+          type: object
+          properties:
+            message: { type: string }
+            company:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
 
     LotAwardedEvent:
       allOf:

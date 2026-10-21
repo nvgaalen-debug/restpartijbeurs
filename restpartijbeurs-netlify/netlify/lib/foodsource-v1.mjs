@@ -205,6 +205,11 @@ export function createV1(d) {
     number("weightPerUnitKg", "kgPerUnit", { gt: 0, max: 100000 });
     if (it.unit === "kg") it.kgPerUnit = 1;
     number("minQuantity", "minQty", { gt: 0, max: 1e7 });
+    // Hele aantallen, behalve bij kg (colli, pallets, kisten en zakken tel je in stuks)
+    if (it.unit !== "kg") {
+      if ((has("quantity") || has("unit") || need) && !Number.isInteger(it.qty)) throw v("quantity", "quantity must be a whole number unless unit is kg.");
+      if ((has("minQuantity") || has("unit") || need) && it.minQty != null && !Number.isInteger(it.minQty)) throw v("minQuantity", "minQuantity must be a whole number unless unit is kg.");
+    }
     if (it.minQty && it.qty && it.minQty > it.qty) throw v("minQuantity", "minQuantity cannot be larger than quantity.");
     if (has("price") || need) {
       const p = body.price;
@@ -418,7 +423,9 @@ export function createV1(d) {
     }
     if (r0 === "events" && !r1 && method === "GET") {
       need(me, "lots:read");
-      const after = Math.max(0, Number(url.searchParams.get("after")) || 0);
+      const afterRaw = url.searchParams.get("after") || "0";
+      if (!/^\d{1,18}$/.test(afterRaw)) throw v("after", "after must be an event id (digits only), as returned in next.");
+      const after = Number(afterRaw);
       const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 50));
       const r = await q(`SELECT id, type, data, created_at FROM rpb_events WHERE user_id = $1 AND id > $2 ORDER BY id LIMIT ${limit}`, [me.id, after]);
       const data = r.rows.map((e) => ({ id: String(e.id), type: e.type, createdAt: new Date(e.created_at).toISOString(), data: e.data }));
@@ -439,13 +446,28 @@ export function createV1(d) {
         let data = items.map(([id, it]) => toApiLot(id, it, base, names));
         if (status) data = data.filter((x) => x.status === status);
         if (since) data = data.filter((x) => x.updatedAt && Date.parse(x.updatedAt) > Date.parse(since));
-        data.sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt)));
-        return json(200, { data });
+        // Vaste volgorde (oudste eerst, dan id), zodat een cursor stabiel blijft als er partijen bijkomen
+        data.sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)) || x.id.localeCompare(y.id));
+        const limitRaw = url.searchParams.get("limit");
+        const limit = limitRaw === null ? 100 : Number(limitRaw);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw v("limit", "limit must be a whole number from 1 to 200.");
+        const cursor = url.searchParams.get("cursor");
+        if (cursor) {
+          let pos;
+          try { pos = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")); } catch {}
+          if (!pos || typeof pos.c !== "string" || typeof pos.i !== "string") throw v("cursor", "cursor is not valid; use nextCursor from the previous page.");
+          data = data.filter((x) => String(x.createdAt) > pos.c || (String(x.createdAt) === pos.c && x.id > pos.i));
+        }
+        const page = data.slice(0, limit), hasMore = data.length > limit;
+        const last = page[page.length - 1];
+        const nextCursor = hasMore ? Buffer.from(JSON.stringify({ c: String(last.createdAt), i: last.id })).toString("base64url") : null;
+        return json(200, { data: page, nextCursor, hasMore });
       }
       // POST /lots
       if (!r1 && method === "POST") {
         need(me, "lots:write");
         const body = await readJson(req);
+        if (typeof body.externalId !== "string" || !body.externalId) throw v("externalId", "externalId is required for POST /lots, so a retry after a timeout cannot create a second lot. Or use PUT /lots/by-external-id/{externalId}.");
         const it = fromApi(body, null, "create");
         const res = await mutate(me, base, (doc) => {
           if (extTaken(doc, it.externalId)) {
@@ -495,6 +517,10 @@ export function createV1(d) {
           const res = await mutate(me, base, (doc) => {
             const hit = findLot(doc, ref);
             if (!hit) throw notFound();
+            // externalId is de vaste sleutel naar het ERP: eenmaal gezet niet meer te wijzigen.
+            // Een partij die in de app is gemaakt (zonder externalId) mag er wel één krijgen.
+            if (body.externalId !== undefined && hit.it.externalId && body.externalId !== hit.it.externalId) throw v("externalId", "externalId cannot be changed once it is set.");
+            if (body.externalId === null || body.externalId === "") { if (hit.it.externalId) throw v("externalId", "externalId cannot be removed once it is set."); }
             const it = fromApi(body, hit.it, "patch");
             if (extTaken(doc, it.externalId, hit.id)) throw fail(409, `Another lot already uses externalId "${it.externalId}".`, "externalId");
             doc.items[hit.id] = it;
@@ -553,14 +579,18 @@ export function createV1(d) {
   }
 
   async function handle(req, parts, url) {
-    try { return await route(req, parts, url); }
+    // Elk antwoord krijgt een id (van Netlify als die er is): handig bij supportvragen tussen klant, ERP-partner en FoodSource
+    const traceId = (req.headers.get("x-nf-request-id") || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 64) || crypto.randomBytes(10).toString("hex");
+    let res;
+    try { res = await route(req, parts, url); }
     catch (e) {
-      if (e && e.status) {
-        const code = e.v1?.code || CODES[e.status] || "error";
-        return json(e.status, { error: { code, message: e.message, field: e.v1?.field || null } }, e.headers || {});
-      }
-      throw e;
+      if (!(e && e.status)) { console.error("v1", traceId, e); throw e; }
+      const code = e.v1?.code || CODES[e.status] || "error";
+      const field = e.v1?.field || null;
+      res = json(e.status, { error: { code, message: e.message, field, details: field ? [{ field, message: e.message }] : [], traceId } }, e.headers || {});
     }
+    res.headers.set("foodsource-request-id", traceId);
+    return res;
   }
 
   // ---------- Mijn account → API-koppelingen (met de gewone sessie van de app) ----------

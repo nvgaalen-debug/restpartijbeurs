@@ -379,3 +379,25 @@ dialog.wide { width: min(760px, calc(100vw - 32px)); }
 .ai-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; vertical-align: -1px; margin-right: 4px; animation: ai-spin .8s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ai-spin { animation: none; } }
+
+/* ---------- telefoon: partij aanbieden en bieden als volledig scherm ---------- */
+/* Safari zoomt in bij velden met tekst kleiner dan 16px; op aanraakschermen daarom 16px en ruime tikvlakken */
+@media (pointer: coarse) {
+  .field input, .field select, .field textarea { font-size: 16px; min-height: 44px; }
+  .field textarea { min-height: 80px; }
+  .dlg-foot .btn { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  dialog.sheet { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; overscroll-behavior: contain; }
+  dialog.sheet > form { min-height: 100%; display: flex; flex-direction: column; }
+  dialog.sheet .dlg-head { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 8px; border-bottom: 1px solid var(--line); }
+  dialog.sheet .dlg-head h2 { font-size: 22px; }
+  dialog.sheet .dlg-head p { display: none; }
+  dialog.sheet .form { padding: 12px 16px; flex: 1; }
+  dialog.sheet .dlg-foot { position: sticky; bottom: 0; z-index: 2; background: var(--surface); border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  dialog.sheet .dlg-foot .actions { width: 100%; display: flex; gap: 10px; }
+  dialog.sheet .dlg-foot .actions .btn { flex: 1; }
+  dialog.sheet .dlg-foot .err:empty { display: none; }
+  dialog.sheet .dlg-foot .err { width: 100%; }
+}
+.dlg-head h2:focus { outline: none; }

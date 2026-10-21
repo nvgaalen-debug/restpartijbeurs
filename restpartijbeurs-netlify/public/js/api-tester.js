@@ -179,11 +179,20 @@ $$("#l-filter button").forEach((b) => b.addEventListener("click", () => {
 $("#l-refresh").addEventListener("click", () => loadLots());
 async function loadLots() {
   if (!T.key) return;
-  const r = await call("GET", "/lots" + (lotFilter ? "?status=" + lotFilter : ""));
+  // Alle pagina's ophalen (limit 200 per keer, verder met nextCursor), zoals een ERP dat ook doet
+  const all = []; let cursor = "", r;
+  for (let n = 0; n < 20; n++) {
+    const qs = new URLSearchParams({ limit: "200", ...(lotFilter ? { status: lotFilter } : {}), ...(cursor ? { cursor } : {}) });
+    r = await call("GET", "/lots?" + qs);
+    if (r.status !== 200) break;
+    all.push(...r.res.data);
+    if (!r.res.hasMore || !r.res.nextCursor) break;
+    cursor = r.res.nextCursor;
+  }
   const body = $("#l-body");
   if (r.status !== 200) { body.innerHTML = `<tr><td colspan="8" class="err">${esc(errText(r))}</td></tr>`; return; }
-  T.lots = r.res.data;
-  body.innerHTML = r.res.data.length ? r.res.data.map((l) => {
+  T.lots = all.slice().reverse(); // nieuwste bovenaan
+  body.innerHTML = T.lots.length ? T.lots.map((l) => {
     const [cls, word] = STATUS[l.status] || ["off", l.status];
     return `<tr data-id="${esc(l.id)}">
       <td><code>${esc(l.externalId || "–")}</code></td><td>${esc(l.product)}${l.variety ? ` <span class="at-muted">${esc(l.variety)}</span>` : ""}</td>

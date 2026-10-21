@@ -216,6 +216,13 @@ function setView(v) {
 
 // ---------- lot dialog ----------
 const dlgLot = $("#dlg-lot");
+// Telefoon/tablet: niet meteen een veld selecteren, anders schuift het toetsenbord over het venster (en de fotoknop)
+const isTouch = () => matchMedia("(pointer: coarse)").matches;
+// Bedragen tonen en lezen met komma; "1.234,50" en "6.50" werken allebei
+const eurOut = (n) => (typeof n === "number" && isFinite(n) ? n.toFixed(2).replace(".", ",") : "");
+const decOut = (n) => (n === null || n === undefined || n === "" ? "" : String(n).replace(".", ","));
+const decIn = (v) => { let t = String(v ?? "").trim().replace(/\s/g, ""); if (t.includes(",")) t = t.replace(/\./g, "").replace(",", "."); return parseFloat(t); };
+const intIn = (v) => { const t = String(v ?? "").trim().replace(/[\s.]/g, ""); return /^\d+$/.test(t) ? parseInt(t, 10) : NaN; };
 function openLotDialog(lotId) {
   S.editing = lotId || null;
   const doc = myLotsDoc();
@@ -226,8 +233,8 @@ function openLotDialog(lotId) {
   const v = (id, val) => ($(id).value = val ?? "");
   v("#f-product", l?.product); v("#f-ras", l?.ras); v("#f-cat", l?.category || "Groente"); v("#f-klasse", l?.klasse || "Klasse I");
   v("#f-herkomst", l?.origin || "NL"); v("#f-loc", l?.location); v("#f-qty", l?.qty); v("#f-unit", l?.unit || "colli");
-  v("#f-kg", l?.kgPerUnit || ""); $("#f-kg-field").hidden = (l?.unit || "colli") === "kg";
-  v("#f-minqty", l?.minQty || ""); v("#f-price", l?.price); v("#f-until", l?.until || tomorrow); v("#f-pack", l?.pack); v("#f-note", l?.note);
+  v("#f-kg", decOut(l?.kgPerUnit || "")); $("#f-kg-field").hidden = (l?.unit || "colli") === "kg";
+  v("#f-minqty", l?.minQty || ""); v("#f-price", eurOut(l?.price)); v("#f-until", l?.until || tomorrow); v("#f-pack", l?.pack); v("#f-note", l?.note);
   v("#f-company", l?.company || doc?.company || S.user?.company || ""); v("#f-phone", l?.contact || doc?.contact || S.user?.contact || "");
   $("#lot-err").textContent = "";
   S.dlgPhotos = l ? validPhotos(l) : [];
@@ -238,7 +245,7 @@ function openLotDialog(lotId) {
   renderPhotoEdit();
   document.dispatchEvent(new CustomEvent("lot-dialog-open"));
   dlgLot.showModal();
-  $("#f-product").focus();
+  if (isTouch()) dlgLot.scrollTop = 0; else $("#f-product").focus();
 }
 
 // ---------- foto's ----------
@@ -318,7 +325,7 @@ function openContact(sellerId, lotId) {
   $("#ct-company").textContent = l.company || "Aanbieder";
   $("#ct-line").textContent = c.text || "Deze aanbieder heeft geen telefoonnummer of e-mailadres ingevuld.";
   const me = S.user ? S.user.name + (S.user.company ? ", " + S.user.company : "") : "";
-  $("#ct-msg").value = `Goedendag,\n\nIk heb interesse in uw restpartij ${l.product}${l.ras ? " (" + l.ras + ")" : ""}: ${num.format(rem)} ${l.unit} à ${euro.format(l.price)} per ${unitSingular(l.unit)}, gezien op de Restpartijbeurs. Is de partij nog beschikbaar?\n\nMet vriendelijke groet,\n${me}`;
+  $("#ct-msg").value = `Goedendag,\n\nIk heb interesse in uw restpartij ${l.product}${l.ras ? " (" + l.ras + ")" : ""}: ${num.format(rem)} ${l.unit} à ${euro.format(l.price)} per ${unitSingular(l.unit)}, gezien op ${(S.settings && S.settings.siteName) || "de Restpartijbeurs"}. Is de partij nog beschikbaar?\n\nMet vriendelijke groet,\n${me}`;
   const subject = `Restpartij ${l.product}${l.ras ? " " + l.ras : ""}`;
   const btns = [];
   if (c.tel) btns.push(`<a class="btn primary" id="ct-call" href="tel:${esc(c.tel)}">Bellen</a>`);
@@ -366,9 +373,9 @@ dlgPhoto.addEventListener("click", (e) => { if (e.target === dlgPhoto) dlgPhoto.
 $("#form-lot").addEventListener("submit", async (e) => {
   e.preventDefault();
   const val = (id) => $(id).value.trim();
-  const qty = parseInt(val("#f-qty"), 10);
-  const price = parseFloat(val("#f-price").replace(",", "."));
-  const minQty = parseInt(val("#f-minqty"), 10) || 1;
+  const qty = intIn(val("#f-qty"));
+  const price = decIn(val("#f-price"));
+  const minQty = intIn(val("#f-minqty")) || 1;
   const err = !val("#f-product") ? "Vul het product in." : !(qty > 0) ? "Vul een hoeveelheid groter dan 0 in." : !(price >= 0) ? "Vul een vraagprijs in." : !val("#f-until") ? "Kies tot wanneer de partij beschikbaar is." : !val("#f-company") ? "Vul je bedrijfsnaam in." : minQty > qty ? "Minimale afname is groter dan de partij." : "";
   if (err) { $("#lot-err").textContent = err; return; }
   if (S.uploading) { $("#lot-err").textContent = "Wacht tot de foto's zijn geüpload."; return; }
@@ -384,7 +391,7 @@ $("#form-lot").addEventListener("submit", async (e) => {
       ...prev,
       product: val("#f-product"), ras: val("#f-ras"), category: val("#f-cat"), klasse: val("#f-klasse"), origin: val("#f-herkomst"),
       location: val("#f-loc"), qty, unit: val("#f-unit"), minQty, price, until: val("#f-until"), pack: val("#f-pack"), note: val("#f-note"),
-      kgPerUnit: val("#f-unit") === "kg" ? 1 : (parseFloat(val("#f-kg").replace(",", ".")) > 0 ? parseFloat(val("#f-kg").replace(",", ".")) : null),
+      kgPerUnit: val("#f-unit") === "kg" ? 1 : (decIn(val("#f-kg")) > 0 ? Math.round(decIn(val("#f-kg")) * 1000) / 1000 : null),
       company, contact, photos,
       remaining: Math.max(0, qty - soldQty),
       status: prev.status === "ingetrokken" ? "ingetrokken" : (qty - soldQty <= 0 ? "verkocht" : "open"),
@@ -411,7 +418,7 @@ function openBidDialog(lotId) {
   const rem = l.remaining ?? l.qty;
   const sm = bidSummary(lotId), top = sm.n ? { price: sm.top } : null;
   $("#bid-sub").textContent = `${l.product}${l.ras ? " · " + l.ras : ""} — ${num.format(rem)} ${l.unit} van ${l.company}. Vraagprijs ${euro.format(l.price)}${top ? `, hoogste bod ${euro.format(top.price)}` : ""}.`;
-  $("#b-price").value = mine ? mine.price : l.price;
+  $("#b-price").value = eurOut(mine ? mine.price : l.price);
   $("#b-qty").value = mine ? Math.min(mine.qty, rem) : rem;
   $("#b-qty").min = Math.min(l.minQty || 1, rem); $("#b-qty").max = rem;
   $("#b-qty-hint").textContent = `${l.minQty > 1 ? "Min. " + num.format(Math.min(l.minQty, rem)) + ", " : ""}max. ${num.format(rem)} ${l.unit}`;
@@ -421,12 +428,12 @@ function openBidDialog(lotId) {
   $("#bid-err").textContent = "";
   updateBidSum();
   dlgBid.showModal();
-  $("#b-price").focus();
+  if (!isTouch()) $("#b-price").focus();
 }
 function updateBidSum() {
   const l = S.bidLot; if (!l) return;
-  const p = parseFloat(String($("#b-price").value).replace(",", "."));
-  const q = parseInt($("#b-qty").value, 10);
+  const p = decIn($("#b-price").value);
+  const q = intIn($("#b-qty").value);
   $("#b-sum").textContent = p >= 0 && q > 0 ? `Totaal ${euro.format(p * q)} voor ${num.format(q)} ${l.unit}${p < l.price ? ` · ${Math.round((1 - p / l.price) * 100)}% onder vraagprijs` : ""}` : "Vul prijs en hoeveelheid in";
 }
 $("#b-price").addEventListener("input", updateBidSum);
@@ -435,8 +442,8 @@ $("#form-bid").addEventListener("submit", async (e) => {
   e.preventDefault();
   const l = S.bidLot; if (!l) return;
   const rem = l.remaining ?? l.qty;
-  const price = parseFloat(String($("#b-price").value).replace(",", "."));
-  const qty = parseInt($("#b-qty").value, 10);
+  const price = decIn($("#b-price").value);
+  const qty = intIn($("#b-qty").value);
   const min = Math.min(l.minQty || 1, rem);
   const company = $("#b-company").value.trim(), contact = $("#b-phone").value.trim();
   const err = !(price > 0) ? "Vul een prijs in." : !(qty >= min) ? `Bied minimaal ${num.format(min)} ${l.unit}.` : qty > rem ? `Er is nog maar ${num.format(rem)} ${l.unit} beschikbaar.` : !company ? "Vul je bedrijfsnaam in." : "";

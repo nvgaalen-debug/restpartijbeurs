@@ -220,7 +220,7 @@ $("#btn-logout").addEventListener("click", async () => {
 // ---------- account ----------
 const dlgAcc = $("#dlg-account");
 $("#btn-account").addEventListener("click", () => {
-  $("#acc-sub").textContent = `Ingelogd als ${S.user.name} (${S.user.role}).`;
+  $("#acc-who").textContent = `Ingelogd als ${S.user.name} (${S.user.role}).`;
   $("#a-company").value = S.user.company || ""; $("#a-contact").value = S.user.contact || "";
   $("#a-cur").value = ""; $("#a-new").value = ""; $("#acc-err").textContent = "";
   const api = !!(S.settings && S.settings.apiEnabled);
