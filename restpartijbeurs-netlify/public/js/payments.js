@@ -79,6 +79,7 @@ function fillSettings() {
   $("#st-vat").value = String(s.vatPercent ?? 21).replace(".", ",");
   $("#st-auto").checked = !!s.autoApprovePaid;
   $("#st-require").checked = s.requireSubscription !== false;
+  $("#st-api").checked = !!s.apiEnabled;
   $$("input[name=st-pm]").forEach((c) => (c.checked = (s.payMethods || []).includes(c.value)));
   $("#st-mollie").innerHTML = s.onlinePayment
     ? `<span class="pill ${s.paymentTestMode ? "warn" : "ok"}">${s.paymentTestMode ? "Testmodus" : "Live"}</span> Mollie is gekoppeld. ${s.paymentTestMode ? "Betalingen zijn testbetalingen; er wordt geen geld overgemaakt." : "Handelaren kunnen hun abonnement online betalen."}`
@@ -127,7 +128,7 @@ $("#form-settings").addEventListener("submit", async (e) => {
     const d = await api("admin/settings", { method: "PUT", body: {
       siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
       registrationOpen: $("#st-reg").checked, subscriptionPriceCents: priceCents, subscriptionText: $("#st-subtext").value,
-      vatPercent: vat, autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
+      vatPercent: vat, autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, apiEnabled: $("#st-api").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
     } });
     applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");
   } catch (err) { $("#st-err").textContent = err.message; }

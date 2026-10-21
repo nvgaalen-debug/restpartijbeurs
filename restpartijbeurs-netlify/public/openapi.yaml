@@ -1,0 +1,677 @@
+openapi: 3.1.0
+info:
+  title: FoodSource API
+  version: "1.0.0"
+  summary: ERP-independent API for offering surplus produce lots on FoodSource.
+  description: |
+    Lets an ERP, WMS or inventory system offer surplus lots (fruit, vegetables, potatoes),
+    keep them up to date, withdraw them, read bids and receive awards.
+
+    **Authentication**: `Authorization: Bearer <key>`. Keys are created by the company in the
+    FoodSource app under *Mijn account → API-koppelingen*. Production keys start with `fs_live_`,
+    test environment keys with `fs_test_`; a key only works in its own environment.
+
+    **Scope**: a key only sees and changes lots of its own company.
+
+    **Errors** always have the shape `{"error": {"code", "message", "field"}}`. `code` is stable,
+    `message` is for humans.
+
+    **Rate limit**: 120 requests per minute per key; above that `429` with `Retry-After` (seconds).
+
+    **Events** (`lot.awarded`, `bid.received`) are delivered to the company's webhook URL and are
+    also available via `GET /events`. See the `webhooks` section for payloads and signatures.
+
+    **Compatibility**: v1 only gets additions. Ignore unknown fields and unknown event types.
+servers:
+  - url: https://{host}/api/v1
+    description: FoodSource (test or production)
+    variables:
+      host:
+        default: foodsource.example
+        description: Host name of the FoodSource environment.
+security:
+  - apiKey: []
+tags:
+  - name: Account
+  - name: Lots
+  - name: Bids
+  - name: Events
+
+paths:
+  /me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      summary: Check the key and its company
+      description: Works with any scope.
+      responses:
+        "200":
+          description: Key and company
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /reason-codes:
+    get:
+      tags: [Lots]
+      operationId: listReasonCodes
+      summary: Active reason codes for withdrawing a lot
+      description: Works with any scope.
+      responses:
+        "200":
+          description: Reason codes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReasonCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /lots:
+    get:
+      tags: [Lots]
+      operationId: listLots
+      summary: List own lots
+      description: "Scope: `lots:read`. Sorted by `updatedAt`, newest first."
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/LotStatus" }
+        - name: updatedSince
+          in: query
+          description: Only lots changed after this moment (an award also counts as a change).
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Lots
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Lot" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Lots]
+      operationId: createLot
+      summary: Create a lot
+      description: |
+        Scope: `lots:write`; requires a valid subscription.
+        Creates a new lot on every call unless `externalId` already exists (409).
+        Prefer `PUT /lots/by-external-id/{externalId}`, which is safe to repeat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LotInput" }
+            example:
+              externalId: "ITEM1000:LOT2026-14"
+              product: Elstar
+              category: fruit
+              quantity: 240
+              unit: case
+              price: { amount: 6.5, currency: EUR }
+              availableUntil: "2026-11-15"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lot" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /lots/by-external-id/{externalId}:
+    put:
+      tags: [Lots]
+      operationId: upsertLotByExternalId
+      summary: Create or fully update a lot by its ERP number (upsert)
+      description: |
+        Scope: `lots:write`; requires a valid subscription.
+        Safe to repeat: the same body causes no change. Writable fields that are left out are cleared;
+        awards, photos and a withdrawal stay as they are. Read-only fields in the body are ignored.
+        `quantity` is the total offered quantity including what was already awarded, and cannot be
+        lower than the awarded quantity.
+      parameters:
+        - $ref: "#/components/parameters/ExternalIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LotUpsertInput" }
+      responses:
+        "200":
+          description: Updated (or unchanged)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lot" }
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lot" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /lots/{id}:
+    parameters:
+      - $ref: "#/components/parameters/LotRef"
+    get:
+      tags: [Lots]
+      operationId: getLot
+      summary: Get one lot, with awards
+      description: "Scope: `lots:read`."
+      responses:
+        "200":
+          description: Lot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    patch:
+      tags: [Lots]
+      operationId: patchLot
+      summary: Change only the fields sent
+      description: |
+        Scope: `lots:write`; requires a valid subscription.
+        Sending a read-only field (`id`, `status`, `remainingQuantity`, `awards`, `createdAt`,
+        `updatedAt`, `photos`, `withdrawal`) returns 400. `null` clears an optional field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LotPatch" }
+            example:
+              quantity: 200
+              price: { amount: 6.25 }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lot" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /lots/{id}/withdraw:
+    parameters:
+      - $ref: "#/components/parameters/LotRef"
+    post:
+      tags: [Lots]
+      operationId: withdrawLot
+      summary: Withdraw a lot with a reason code
+      description: |
+        Scope: `lots:write`; requires a valid subscription.
+        Withdrawing an already withdrawn lot changes nothing and returns 200.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              properties:
+                reasonCode:
+                  type: string
+                  description: One of `GET /reason-codes` (case-insensitive).
+                  examples: [VERK]
+                note:
+                  type: string
+                  maxLength: 300
+                  description: Required when the reason code has `noteRequired`.
+      responses:
+        "200":
+          description: Withdrawn
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lot" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /lots/{id}/bids:
+    parameters:
+      - $ref: "#/components/parameters/LotRef"
+    get:
+      tags: [Bids]
+      operationId: listLotBids
+      summary: Bids on an own lot, highest price first
+      description: "Scope: `bids:read`."
+      responses:
+        "200":
+          description: Bids
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Bid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /events:
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: Events after a given id (alternative to the webhook)
+      description: |
+        Scope: `lots:read`. Same events and ids as the webhook. Store the last processed id and call
+        again with `after=<that id>` while `hasMore` is true. Events are kept for 30 days.
+      parameters:
+        - name: after
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Events, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, next, hasMore]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+                  next:
+                    type: string
+                    description: Id to pass as `after` next time.
+                  hasMore:
+                    type: boolean
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+webhooks:
+  lotAwarded:
+    post:
+      summary: lot.awarded
+      description: |
+        Sent to the seller (`role: seller`) and to the buyer (`role: buyer`) when (part of) a lot is awarded.
+
+        Headers: `FoodSource-Event` (type), `FoodSource-Delivery` (event id, the same on retries),
+        `FoodSource-Signature: t=<unix time>,v1=<hex>` where `v1` = HMAC-SHA256 of `<t>.<raw body>`
+        with the webhook secret (`whsec_…`). Reject messages with `t` older than 5 minutes.
+
+        Success = any 2xx within 5 seconds. Redirects are not followed. Retries after 1, 5 and 15
+        minutes and 1, 3, 6, 12 and 24 hours, then delivery stops (still available via `GET /events`).
+      parameters:
+        - $ref: "#/components/parameters/HookEvent"
+        - $ref: "#/components/parameters/HookDelivery"
+        - $ref: "#/components/parameters/HookSignature"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LotAwardedEvent" }
+      responses:
+        "2XX":
+          description: Received
+  bidReceived:
+    post:
+      summary: bid.received
+      description: Sent to the seller when a bid is placed or changed on one of its lots. Same headers and retries as `lot.awarded`.
+      parameters:
+        - $ref: "#/components/parameters/HookEvent"
+        - $ref: "#/components/parameters/HookDelivery"
+        - $ref: "#/components/parameters/HookSignature"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BidReceivedEvent" }
+      responses:
+        "2XX":
+          description: Received
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: "fs_live_… / fs_test_… (40 characters)"
+
+  parameters:
+    LotRef:
+      name: id
+      in: path
+      required: true
+      description: FoodSource lot id, or `ext:<externalId>`.
+      schema: { type: string }
+      examples:
+        id: { value: L3f2a9c1e5b7d4e8a9c }
+        external: { value: "ext:ITEM1000:LOT2026-14" }
+    ExternalIdPath:
+      name: externalId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ExternalId" }
+    HookEvent:
+      name: FoodSource-Event
+      in: header
+      required: true
+      schema: { type: string, enum: [lot.awarded, bid.received, ping] }
+    HookDelivery:
+      name: FoodSource-Delivery
+      in: header
+      required: true
+      schema: { type: string }
+    HookSignature:
+      name: FoodSource-Signature
+      in: header
+      required: true
+      schema: { type: string, pattern: "^t=\\d+,v1=[a-f0-9]{64}$" }
+
+  responses:
+    ValidationError:
+      description: Invalid field (`field` names it) or invalid JSON
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: validation_error, message: "category must be one of: vegetables, fruit, potatoes.", field: category } }
+    Unauthorized:
+      description: Missing, invalid or revoked key, or key of the other environment
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    SubscriptionRequired:
+      description: The company has no valid subscription (writing only)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The key lacks the scope, or the API is switched off
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Lot does not exist or belongs to another company
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: externalId already in use, or a simultaneous change (retry)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: Body larger than 64 KB, or too many lots for this company
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: More than 120 requests per minute for this key
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds to wait
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, field]
+          properties:
+            code:
+              type: string
+              enum: [validation_error, unauthorized, subscription_required, forbidden, not_found, method_not_allowed, conflict, too_large, rate_limited]
+            message: { type: string }
+            field: { type: [string, "null"], examples: [price.amount] }
+
+    Me:
+      type: object
+      properties:
+        company:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            contact: { type: [string, "null"] }
+        key:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            prefix: { type: string, description: First 16 characters of the key }
+            scopes:
+              type: array
+              items: { $ref: "#/components/schemas/Scope" }
+        environment: { type: string, enum: [test, production] }
+        apiVersion: { type: string, const: v1 }
+
+    Scope:
+      type: string
+      enum: ["lots:read", "lots:write", "bids:read"]
+
+    ReasonCode:
+      type: object
+      properties:
+        code: { type: string, examples: [VERK] }
+        label: { type: string, examples: [Buiten het platform verkocht] }
+        noteRequired: { type: boolean }
+
+    ExternalId:
+      type: string
+      pattern: "^[A-Za-z0-9._:\\-]{1,80}$"
+      description: The company's own number from the ERP; unique per company.
+      examples: ["ITEM1000:LOT2026-14"]
+
+    Money:
+      type: object
+      required: [amount]
+      properties:
+        amount: { type: number, minimum: 0, maximum: 1000000, description: Excluding VAT }
+        currency: { type: string, const: EUR, default: EUR }
+
+    Category: { type: string, enum: [vegetables, fruit, potatoes] }
+    Quality: { type: string, enum: [class-1, class-2, processing, organic-class-1, organic-class-2] }
+    Unit: { type: string, enum: [case, kg, pallet, crate, bag], description: "case = colli, crate = kist" }
+    LotStatus: { type: string, enum: [open, sold, withdrawn, expired] }
+
+    LotFields:
+      type: object
+      properties:
+        externalId: { $ref: "#/components/schemas/ExternalId" }
+        product: { type: string, minLength: 1, maxLength: 80, examples: [Elstar] }
+        variety: { type: [string, "null"], maxLength: 80 }
+        category: { $ref: "#/components/schemas/Category" }
+        quality:
+          description: Defaults to class-1
+          oneOf:
+            - { $ref: "#/components/schemas/Quality" }
+            - { type: "null" }
+        origin: { type: [string, "null"], pattern: "^[A-Za-z]{2}$", description: ISO 3166-1 alpha-2, stored in upper case }
+        location: { type: [string, "null"], maxLength: 80 }
+        gln: { type: [string, "null"], pattern: "^\\d{13}$", description: GS1 GLN with valid check digit }
+        gtin: { type: [string, "null"], pattern: "^(\\d{8}|\\d{12}|\\d{13}|\\d{14})$", description: GS1 GTIN with valid check digit }
+        quantity: { type: number, exclusiveMinimum: 0, maximum: 10000000 }
+        unit: { $ref: "#/components/schemas/Unit" }
+        weightPerUnitKg: { type: [number, "null"], exclusiveMinimum: 0, maximum: 100000, description: Always 1 when unit is kg }
+        minQuantity: { type: [number, "null"], exclusiveMinimum: 0, description: Not larger than quantity }
+        price: { $ref: "#/components/schemas/Money" }
+        availableUntil: { type: [string, "null"], format: date }
+        packaging: { type: [string, "null"], maxLength: 120 }
+        note: { type: [string, "null"], maxLength: 1000 }
+
+    LotInput:
+      allOf:
+        - $ref: "#/components/schemas/LotFields"
+        - required: [product, category, quantity, unit, price]
+    LotUpsertInput:
+      description: Like LotInput; externalId comes from the path (if sent in the body it must be equal).
+      allOf:
+        - $ref: "#/components/schemas/LotFields"
+        - required: [product, category, quantity, unit, price]
+    LotPatch:
+      $ref: "#/components/schemas/LotFields"
+
+    Party:
+      type: object
+      properties:
+        id: { type: string, description: FoodSource company id }
+        company: { type: [string, "null"] }
+        contact: { type: [string, "null"] }
+
+    Award:
+      type: object
+      properties:
+        buyer:
+          type: object
+          properties:
+            id: { type: string }
+            company: { type: [string, "null"] }
+        quantity: { type: number }
+        price: { $ref: "#/components/schemas/Money" }
+        awardedAt: { type: string, format: date-time }
+
+    Lot:
+      allOf:
+        - $ref: "#/components/schemas/LotFields"
+        - type: object
+          properties:
+            id: { type: string, readOnly: true, examples: [L3f2a9c1e5b7d4e8a9c] }
+            externalId: { type: [string, "null"] }
+            status: { $ref: "#/components/schemas/LotStatus" }
+            remainingQuantity: { type: number, readOnly: true }
+            photos:
+              type: array
+              readOnly: true
+              items: { type: string, format: uri }
+            createdAt: { type: [string, "null"], format: date-time, readOnly: true }
+            updatedAt: { type: [string, "null"], format: date-time, readOnly: true }
+            awards:
+              type: array
+              readOnly: true
+              description: Present on own lots; absent in a buyer's lot.awarded event.
+              items: { $ref: "#/components/schemas/Award" }
+            withdrawal:
+              readOnly: true
+              oneOf:
+                - type: "null"
+                - type: object
+                  properties:
+                    reasonCode: { type: string }
+                    note: { type: [string, "null"] }
+                    at: { type: [string, "null"], format: date-time }
+                    byAdministrator: { type: boolean }
+
+    Bid:
+      type: object
+      properties:
+        id: { type: string }
+        buyer: { $ref: "#/components/schemas/Party" }
+        quantity: { type: number }
+        price: { $ref: "#/components/schemas/Money" }
+        note: { type: [string, "null"] }
+        placedAt: { type: [string, "null"], format: date-time }
+        status: { type: string, enum: [open, awarded, rejected] }
+
+    Event:
+      type: object
+      required: [id, type, createdAt, data]
+      properties:
+        id: { type: string, description: Increasing; the same in the webhook and in GET /events }
+        type: { type: string, examples: [lot.awarded, bid.received] }
+        createdAt: { type: string, format: date-time }
+        data:
+          type: object
+          description: See LotAwardedData and BidReceivedData.
+
+    LotAwardedData:
+      type: object
+      properties:
+        role: { type: string, enum: [seller, buyer] }
+        lot: { $ref: "#/components/schemas/Lot" }
+        award:
+          type: object
+          properties:
+            quantity: { type: number }
+            unit: { oneOf: [{ $ref: "#/components/schemas/Unit" }, { type: "null" }] }
+            price: { $ref: "#/components/schemas/Money" }
+            total: { $ref: "#/components/schemas/Money" }
+            awardedAt: { type: string, format: date-time }
+            buyer: { $ref: "#/components/schemas/Party", description: "When role = seller" }
+            seller: { $ref: "#/components/schemas/Party", description: "When role = buyer" }
+
+    BidReceivedData:
+      type: object
+      properties:
+        lot:
+          type: object
+          properties:
+            id: { type: string }
+            externalId: { type: [string, "null"] }
+            product: { type: string }
+            remainingQuantity: { type: number }
+        bid:
+          type: object
+          properties:
+            buyer: { $ref: "#/components/schemas/Party" }
+            quantity: { type: number }
+            price: { $ref: "#/components/schemas/Money" }
+            note: { type: [string, "null"] }
+            placedAt: { type: string, format: date-time }
+            updated: { type: boolean, description: true when an existing bid was changed }
+
+    LotAwardedEvent:
+      allOf:
+        - $ref: "#/components/schemas/Event"
+        - type: object
+          properties:
+            type: { const: lot.awarded }
+            data: { $ref: "#/components/schemas/LotAwardedData" }
+
+    BidReceivedEvent:
+      allOf:
+        - $ref: "#/components/schemas/Event"
+        - type: object
+          properties:
+            type: { const: bid.received }
+            data: { $ref: "#/components/schemas/BidReceivedData" }

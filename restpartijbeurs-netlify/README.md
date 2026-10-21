@@ -16,9 +16,14 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/js/admin.js` | Beheer: dashboard, gebruikers, redencodes, betalingen, logboek, instellingen |
 | `public/js/payments.js` | Abonnement online betalen (Mollie) |
 | `public/js/stats.js` | Beheer: statistieken |
+| `public/js/integrations.js` | Mijn account → API-koppelingen: sleutels en webhook |
+| `public/api-tester.html`, `public/js/api-tester.js` | API-tester (ERP-simulator) op `/api-tester.html`: partijen aanbieden via de API, berichten en orders bekijken |
+| `public/openapi.yaml` | Technische beschrijving van de API (OpenAPI 3.1) |
 | `public/js/start.js` | Start de app (wordt als laatste geladen) |
 | `public/_headers` | Beveiligingsheaders voor de website (o.a. Content-Security-Policy) |
 | `netlify/functions/api.mjs` | De serverfunctie op `/api/...`: inloggen, gebruikers, partijen en biedingen |
+| `netlify/functions/webhooks.mjs` | Geplande functie (elke 5 minuten): mislukte webhookberichten opnieuw sturen |
+| `netlify/lib/foodsource-v1.mjs` | De FoodSource API v1 op `/api/v1/...` voor koppelingen met ERP-systemen |
 | `netlify.toml` | Vertelt Netlify waar de app en de functie staan |
 | `package.json` | Laat Netlify de PostgreSQL-driver (`pg`) installeren |
 
@@ -66,6 +71,40 @@ Upload altijd **alle gewijzigde bestanden in één keer**. De bestanden in `publ
 Vervang het gewijzigde bestand op GitHub en kies **Commit changes**. Netlify bouwt zelf opnieuw.
 Gegevens blijven staan; ingelogde gebruikers blijven ingelogd.
 
+## FoodSource API v1 (koppelingen)
+
+Elk ERP- of voorraadsysteem koppelt via dezelfde API op `/api/v1`. Zo werkt het:
+
+1. Beheerder: zet onder **Website-instellingen → Koppelingen** de API aan. Uitzetten blokkeert alle sleutels direct.
+2. Handelaar: maakt onder **Mijn account → API-koppelingen** een sleutel (`fs_live_…`, in de testomgeving `fs_test_…`) met alleen de rechten die nodig zijn: `lots:read`, `lots:write`, `bids:read`. De sleutel is één keer zichtbaar.
+3. Optioneel: een webhookadres (https). FoodSource stuurt dan meteen `bid.received` (nieuw bod) en `lot.awarded` (gunning), ondertekend met `FoodSource-Signature: t=…,v1=HMAC-SHA256("t.body")`. Lukt het niet, dan opnieuw na 1, 5 en 15 minuten en 1, 3, 6, 12 en 24 uur.
+
+| Methode | Pad | Doel |
+| --- | --- | --- |
+| GET | `/api/v1/me` | Sleutel en bedrijf controleren |
+| GET / POST | `/api/v1/lots` | Eigen partijen (filter `status`, `updatedSince`) / nieuwe partij |
+| GET / PATCH | `/api/v1/lots/{id}` | Eén partij / wijzigen (`{id}` mag ook `ext:<externalId>` zijn) |
+| PUT | `/api/v1/lots/by-external-id/{externalId}` | Aanmaken of bijwerken op ERP-nummer (veilig om te herhalen) |
+| POST | `/api/v1/lots/{id}/withdraw` | Intrekken met `reasonCode` |
+| GET | `/api/v1/lots/{id}/bids` | Biedingen op een eigen partij |
+| GET | `/api/v1/reason-codes` | Redencodes |
+| GET | `/api/v1/events?after=<id>` | Gebeurtenissen ophalen (alternatief voor de webhook) |
+
+Voorbeeld:
+
+```
+curl -X PUT https://<jouw-site>/api/v1/lots/by-external-id/BC-1001 \
+  -H "Authorization: Bearer fs_live_..." -H "Content-Type: application/json" \
+  -d '{"product":"Elstar","category":"fruit","quantity":240,"unit":"case","price":{"amount":6.5,"currency":"EUR"},"availableUntil":"2026-11-15"}'
+```
+
+Testen zonder ERP: open `https://<jouw-site>/api-tester.html` (ook via Mijn account → API-koppelingen → API-tester openen), plak een sleutel en bied partijen aan, haal biedingen en berichten op en bekijk de gesimuleerde orders.
+
+De volledige specificatie staat in `public/openapi.yaml` (OpenAPI 3.1), na publicatie te openen op `https://<jouw-site>/openapi.yaml`.
+
+Limiet: 120 verzoeken per minuut per sleutel (daarboven 429 met `Retry-After`). Fouten: `{"error": {"code", "message", "field"}}`.
+Elke wijziging via de API staat in het logboek, met de eerste tekens van de sleutel.
+
 ## Beveiliging in het kort
 - **Codes:** minstens 12 tekens, met scrypt gehasht opgeslagen. Wie nog een kortere code heeft, of een code die de beheerder heeft ingesteld, moet bij het inloggen eerst zelf een nieuwe kiezen.
 - **Sessie:** in een HttpOnly-, Secure- en SameSite=Strict-cookie. JavaScript kan hem niet lezen. Een sessie verloopt na 30 dagen of bij uitloggen. Wijzigingen worden alleen geaccepteerd vanaf de eigen website (Origin-controle).
@@ -77,6 +116,8 @@ Gegevens blijven staan; ingelogde gebruikers blijven ingelogd.
 - **Foto's:** de server controleert of het echt een JPEG of WebP is. Je kunt alleen je eigen foto's gebruiken of verwijderen. Losse foto's die nergens meer bij horen, worden na 6 uur opgeruimd.
 - **Betalingen:** de status komt altijd van Mollie zelf, nooit van de browser of de webhookmelding.
 - Een gedeactiveerde gebruiker of een gebruiker met een nieuwe code wordt direct uitgelogd.
+- **API-sleutels:** alleen een SHA-256-afdruk wordt bewaard. Een sleutel werkt alleen in zijn eigen omgeving (`fs_live_` of `fs_test_`) en direct niet meer na intrekken, deactiveren of het uitzetten van de API. De API accepteert geen sessiecookie, dus een andere website kan niet namens een ingelogde gebruiker iets doen.
+- **Webhooks:** alleen `https` op poort 443 of 8443, geen interne netwerkadressen (ook niet via DNS of een adres dat later verandert: de server controleert het IP-adres bij het verbinden) en geen doorverwijzingen.
 
 ## Problemen
 | Melding | Oplossing |

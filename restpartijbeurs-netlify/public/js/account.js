@@ -223,6 +223,8 @@ $("#btn-account").addEventListener("click", () => {
   $("#acc-sub").textContent = `Ingelogd als ${S.user.name} (${S.user.role}).`;
   $("#a-company").value = S.user.company || ""; $("#a-contact").value = S.user.contact || "";
   $("#a-cur").value = ""; $("#a-new").value = ""; $("#acc-err").textContent = "";
+  const api = !!(S.settings && S.settings.apiEnabled);
+  $("#acc-api-title").hidden = !api; $("#acc-api").hidden = !api;
   dlgAcc.showModal();
 });
 $("#form-account").addEventListener("submit", async (e) => {

@@ -20,6 +20,7 @@
 import pg from "pg";
 import crypto from "node:crypto";
 import tls from "node:tls";
+import { createV1 } from "../lib/foodsource-v1.mjs";
 
 export const config = { path: "/api/*" };
 
@@ -37,13 +38,13 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
-const SCHEMA_VERSION = "2026-10-14b"; // verhogen bij elke wijziging in ensureSchema
+const SCHEMA_VERSION = "2026-10-20a"; // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 // Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
 // Alleen tabellen van de Restpartijbeurs (vaste lijst), nooit die van een andere app (zoals records van Vloeren Kassa).
 const PG_MIGRATE_FROM = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_MIGRATE_FROM || "") ? process.env.PG_MIGRATE_FROM : "";
-const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets"];
+const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events"];
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -193,6 +194,34 @@ async function ensureSchema() {
         full_img TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL
       )`);
+      // FoodSource API v1: sleutels per bedrijf, gebeurtenissen (webhooks) en webhookadres
+      await q(`CREATE TABLE IF NOT EXISTS rpb_api_keys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        prefix TEXT NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        scopes TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        last_used_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ
+      )`);
+      await q("CREATE INDEX IF NOT EXISTS rpb_api_keys_user ON rpb_api_keys (user_id)");
+      await q(`CREATE TABLE IF NOT EXISTS rpb_events (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        data JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        delivered_at TIMESTAMPTZ,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT NOT NULL DEFAULT '',
+        next_attempt_at TIMESTAMPTZ
+      )`);
+      await q("CREATE INDEX IF NOT EXISTS rpb_events_user ON rpb_events (user_id, id)");
+      await q("CREATE INDEX IF NOT EXISTS rpb_events_due ON rpb_events (next_attempt_at) WHERE delivered_at IS NULL AND next_attempt_at IS NOT NULL");
+      await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS webhook_url TEXT NOT NULL DEFAULT ''");
+      await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS webhook_secret TEXT NOT NULL DEFAULT ''");
       await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
   }
@@ -328,6 +357,7 @@ const SETTING_DEFAULTS = {
   payMethods: "ideal",             // Mollie-methoden, kommagescheiden; leeg = alles wat in Mollie aan staat
   autoApprovePaid: "false",        // aanvraag automatisch goedkeuren na online betaling
   requireSubscription: "true",     // zonder geldig abonnement niet aanbieden/bieden
+  apiEnabled: "false",             // FoodSource API v1 voor koppelingen met ERP-systemen
   reasonCodes: JSON.stringify([    // redenen bij het intrekken van een advertentie
     { code: "VERK", label: "Buiten het platform verkocht", active: true, needsNote: false },
     { code: "KWAL", label: "Kwaliteit niet meer goed", active: true, needsNote: false },
@@ -370,6 +400,7 @@ async function getSettings() {
     payMethods: String(s.payMethods || "").split(",").map((x) => x.trim()).filter((x) => PAY_METHODS.includes(x)),
     autoApprovePaid: s.autoApprovePaid === "true",
     requireSubscription: s.requireSubscription !== "false",
+    apiEnabled: s.apiEnabled === "true",
     reasonCodes: parseReasons(s.reasonCodes),
     onlinePayment: !!process.env.MOLLIE_API_KEY,
     paymentTestMode: String(process.env.MOLLIE_API_KEY || "").startsWith("test_"),
@@ -382,8 +413,8 @@ async function getSettings() {
 
 // Leegmaken mag standaard alleen in de testomgeving
 function wipeAllowed() { return process.env.APP_ENV === "test" || process.env.ALLOW_WIPE === "true"; }
-const TRADE_TABLES = ["rpb_docs", "rpb_photos"];
-const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
+const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events"];
+const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_events", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
 
 // ---------- e-mail: via Gmail (SMTP) of via Brevo ----------
 const MAIL_BASE = process.env.MAIL_API_BASE || "https://api.brevo.com/v3";
@@ -745,7 +776,7 @@ async function writeDocAt(collection, id, cur, data, by) {
 const UNITS = ["colli", "kg", "pallets", "kisten", "zakken"];
 const CATEGORIES = ["Groente", "Fruit", "Aardappelen"];
 const KLASSEN = ["Klasse I", "Klasse II", "Industrie / verwerking", "Biologisch Klasse I", "Biologisch Klasse II"];
-const LOT_TEXT = { product: 80, ras: 80, category: 40, klasse: 40, origin: 60, location: 80, unit: 20, pack: 120, note: 1000, company: 120, contact: 120 };
+const LOT_TEXT = { externalId: 80, gtin: 14, gln: 13, product: 80, ras: 80, category: 40, klasse: 40, origin: 60, location: 80, unit: 20, pack: 120, note: 1000, company: 120, contact: 120 };
 const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v.replace(",", ".")) : NaN);
 const isoOr = (v, d) => (typeof v === "string" && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : d);
 const sumQty = (acc) => Object.values(acc || {}).reduce((s, a) => s + (Number(a?.qty) || 0), 0);
@@ -832,6 +863,13 @@ async function normalizeLots(me, prev, data) {
     }
     items[id] = it;
   }
+  // Eigen ERP-nummer (externalId, via de API) is uniek per bedrijf
+  const seenExt = new Set();
+  for (const it of Object.values(items)) {
+    if (!it.externalId) continue;
+    if (seenExt.has(it.externalId)) throw httpError(409, `Het ERP-nummer ${it.externalId} komt bij twee partijen voor.`);
+    seenExt.add(it.externalId);
+  }
   // Een partij verdwijnt nooit via opslaan vanuit de browser (de app heeft daar geen knop voor).
   // Ontbreekt er een, dan is de browser verouderd: weigeren en opnieuw laten ophalen.
   // Verwijderen kan alleen de beheerder, via Beheer → Restpartijen.
@@ -904,8 +942,11 @@ function bidsView(me, bidderId, data) {
   return { company: data.company || "", contact: data.contact || "", offers };
 }
 
+// ---------- FoodSource API v1 ----------
+const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES });
+
 // ---------- routes ----------
-async function route(req) {
+async function route(req, ctx = {}) {
   const url = new URL(req.url);
   const parts = url.pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const method = req.method.toUpperCase();
@@ -1136,6 +1177,9 @@ async function route(req) {
     return new Response("ok", { status: 200 });
   }
 
+  // FoodSource API v1 voor koppelingen (eigen sleutel, geen sessiecookie)
+  if (a === "v1") { ctx.kick = true; return V1.handle(req, parts.slice(1), url); }
+
   // Vanaf hier: ingelogd
   const me = await auth(req);
   if (me.must_change && a !== "me" && a !== "logout") {
@@ -1236,6 +1280,9 @@ async function route(req) {
     return json(200, { user: publicUser({ ...me, company, contact }) });
   }
 
+  // Mijn account → API-koppelingen: sleutels en webhook
+  if (a === "keys" || a === "webhook") { ctx.kick = b === "retry"; return V1.account(req, me, parts, readBody); }
+
   // Alle partijen en biedingen (of alleen wat er sinds 'since' veranderde)
   if (a === "data" && method === "GET") {
     const since = url.searchParams.get("since");
@@ -1303,6 +1350,12 @@ async function route(req) {
       for (const [pid, at] of ownPhotos) if (!used.has(pid) && at.getTime() < cutoff) await q("DELETE FROM rpb_photos WHERE id = $1 AND owner = $2", [pid, me.id]);
     } else lines = describeBids(prev, clean);
     for (const [kind, detail] of lines.slice(0, 10)) await log(me, kind, detail);
+    // Gebeurtenissen voor koppelingen (webhook / GET /api/v1/events): nieuw bod, gunning
+    try {
+      if (b === "lots") await V1.emitForLots(me, prev, clean, siteUrl(req));
+      else await V1.emitForBids(me, prev, clean, siteUrl(req));
+      ctx.kick = true;
+    } catch (e) { console.error("events", e); }
     return json(200, { ok: true, at: saved.at.toISOString(), version: saved.version, data: clean });
   }
 
@@ -1558,6 +1611,7 @@ async function route(req) {
         payMethods: (Array.isArray(body.payMethods) ? body.payMethods : []).filter((x) => PAY_METHODS.includes(x)).join(","),
         autoApprovePaid: body.autoApprovePaid === true ? "true" : "false",
         requireSubscription: body.requireSubscription === false ? "false" : "true",
+        apiEnabled: body.apiEnabled === undefined ? String(before.apiEnabled) : body.apiEnabled === true ? "true" : "false",
       };
       for (const [k, v] of Object.entries(vals)) {
         await q("INSERT INTO rpb_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [k, v]);
@@ -1623,9 +1677,19 @@ async function route(req) {
   throw httpError(404, "Onbekend adres.");
 }
 
-export default async (req) => {
+// Webhooks afleveren: na een wijziging (op de achtergrond als Netlify dat kan) en elke 5 minuten
+// via de geplande functie webhooks.mjs (voor herhaalpogingen).
+export async function runWebhooks(limit = 20) { await ensureSchema(); return V1.deliverDue(limit); }
+
+export default async (req, context) => {
   try {
-    return await route(req);
+    const ctx = { kick: false };
+    const res = await route(req, ctx);
+    if (ctx.kick) {
+      const p = V1.deliverDue(5).catch((e) => console.error("webhooks", e));
+      if (context && typeof context.waitUntil === "function") context.waitUntil(p); else await p;
+    }
+    return res;
   } catch (e) {
     if (e && e.status) return json(e.status, { error: e.message, ...(e.extra || {}) });
     console.error(e);

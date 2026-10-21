@@ -415,6 +415,8 @@
             </div>
             <span class="hint">Zet alleen methoden aan die ook in je Mollie-dashboard actief zijn. Niets aangevinkt: Mollie toont alles wat in je account aan staat. Wero is in Nederland vanaf oktober 2026 beschikbaar en staat bij Mollie nog in bèta.</span></div>
           <div class="field full"><label for="st-subtext">Tekst bij het aanvraagformulier</label><input id="st-subtext" maxlength="300" placeholder="bijv. Abonnement € 120 per jaar excl. btw, factuur na goedkeuring."></div>
+          <div class="fieldset-title">Koppelingen (FoodSource API)</div>
+          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-api"> API voor koppelingen aan</label><span class="hint">Handelaren kunnen dan onder Mijn account → API-koppelingen sleutels maken, zodat hun ERP zelf partijen aanmeldt en gunningen ophaalt. Uitzetten blokkeert alle sleutels direct.</span></div>
           <div class="fieldset-title">E-mail</div>
           <div class="field full"><div class="ct-card" id="st-mail"></div></div>
           <div class="field full" id="st-testmail-row" hidden><label for="st-testmail">Testmail sturen naar</label>
@@ -524,6 +526,8 @@
       <div class="field"><label for="a-contact">Telefoon of e-mail</label><input id="a-contact"></div>
       <div class="fieldset-title" id="acc-sub-title" hidden>Abonnement</div>
       <div class="field full" id="acc-sub" hidden><div class="ct-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span id="acc-sub-text"></span><button class="btn primary small" type="button" id="acc-sub-pay" hidden></button></div></div>
+      <div class="fieldset-title" id="acc-api-title" hidden>Koppelingen</div>
+      <div class="field full" id="acc-api" hidden><div class="ct-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span>Koppel je ERP of voorraadsysteem met de FoodSource API.</span><button class="btn small" type="button" id="acc-api-open">API-koppelingen</button></div></div>
       <div class="fieldset-title">Code wijzigen (optioneel)</div>
       <div class="field"><label for="a-cur">Huidige code</label><input id="a-cur" type="password" autocomplete="current-password"></div>
       <div class="field"><label for="a-new">Nieuwe code (minstens 12 tekens)</label><input id="a-new" type="password" autocomplete="new-password"></div>
@@ -531,6 +535,38 @@
     <div class="dlg-foot"><span class="err" id="acc-err"></span>
       <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div></div>
   </form>
+</dialog>
+
+<dialog id="dlg-api" class="wide">
+  <div class="dlg-head"><h2>API-koppelingen</h2><p>Met een API-sleutel kan je ERP, WMS of voorraadsysteem zelf partijen aanmelden, bijwerken en intrekken, en biedingen en gunningen ophalen. Basisadres: <code id="api-base"></code></p></div>
+  <div class="form" style="grid-template-columns:1fr">
+    <div class="fieldset-title">Sleutels</div>
+    <div class="field"><div class="tablewrap" style="border:1px solid var(--line);border-radius:var(--r)"><table class="bids"><thead><tr><th>Naam</th><th>Sleutel</th><th>Rechten</th><th>Laatst gebruikt</th><th></th></tr></thead><tbody id="api-keys"></tbody></table></div></div>
+    <div class="api-secret" id="api-newkey" hidden>
+      <b>Kopieer deze sleutel nu.</b> Je ziet hem maar één keer; FoodSource bewaart alleen een afdruk. Kwijt? Trek hem in en maak een nieuwe.
+      <div class="api-secret-row"><code id="api-newkey-val"></code><button class="btn small" type="button" data-copy="api-newkey-val">Kopiëren</button></div>
+    </div>
+    <div class="field"><label for="api-name">Nieuwe sleutel</label>
+      <div class="actions" style="justify-content:flex-start"><input id="api-name" maxlength="60" placeholder="bijv. Business Central" style="flex:1 1 220px"><button class="btn primary small" type="button" id="api-create">Sleutel maken</button></div>
+      <div class="chips" style="margin-top:8px">
+        <label class="check" style="color:var(--ink)"><input type="checkbox" name="api-scope" value="lots:read" checked> Partijen lezen</label>
+        <label class="check" style="color:var(--ink)"><input type="checkbox" name="api-scope" value="lots:write" checked> Partijen aanmelden en wijzigen</label>
+        <label class="check" style="color:var(--ink)"><input type="checkbox" name="api-scope" value="bids:read" checked> Biedingen lezen</label>
+      </div>
+      <span class="hint">Geef een koppeling alleen de rechten die hij nodig heeft. Maximaal 10 sleutels.</span></div>
+    <div class="fieldset-title">Webhook</div>
+    <div class="field"><label for="api-hook">Webhookadres (https)</label>
+      <div class="actions" style="justify-content:flex-start"><input id="api-hook" type="url" placeholder="https://erp.jouwbedrijf.nl/foodsource" style="flex:1 1 260px"><button class="btn small" type="button" id="api-hook-save">Opslaan</button></div>
+      <span class="hint">Bij een nieuw bod (<code>bid.received</code>) en bij een gunning (<code>lot.awarded</code>) stuurt FoodSource meteen een ondertekend bericht naar dit adres. Lukt dat niet, dan volgen herhaalpogingen tot 24 uur later.</span></div>
+    <div class="api-secret" id="api-newsecret" hidden>
+      <b>Webhookgeheim</b>, om de handtekening (<code>FoodSource-Signature</code>) te controleren. Je ziet het maar één keer.
+      <div class="api-secret-row"><code id="api-newsecret-val"></code><button class="btn small" type="button" data-copy="api-newsecret-val">Kopiëren</button></div>
+    </div>
+    <div class="field" id="api-hook-tools" hidden>
+      <div class="actions" style="justify-content:flex-start"><button class="btn small" type="button" id="api-hook-test">Testbericht sturen</button><button class="btn small" type="button" id="api-hook-secret">Nieuw geheim</button><button class="btn small" type="button" id="api-hook-retry" hidden>Mislukte berichten opnieuw sturen</button></div>
+      <span class="hint" id="api-hook-status"></span></div>
+  </div>
+  <div class="dlg-foot"><span class="err" id="api-err"></span><div class="actions"><a class="btn" href="/api-tester.html" target="_blank" rel="noopener">API-tester openen</a><button class="btn" type="button" data-close>Sluiten</button></div></div>
 </dialog>
 
 <dialog id="dlg-reason">
@@ -611,6 +647,7 @@
 <script src="/js/admin.js"></script>
 <script src="/js/payments.js"></script>
 <script src="/js/stats.js"></script>
+<script src="/js/integrations.js"></script>
 <script src="/js/start.js"></script>
 </body>
 </html>

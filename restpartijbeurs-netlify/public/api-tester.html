@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>API-tester</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="at">
+<div class="env-test" id="env-test" hidden>TESTOMGEVING · gegevens zijn niet echt</div>
+
+<header class="top">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand"><h1>API-tester</h1><span>FoodSource API v1 · ERP-simulator</span></div>
+      <div class="right"><a class="btn small ghost" href="/">Terug naar de app</a></div>
+    </div>
+    <nav class="tabs" role="tablist" id="at-tabs">
+      <button class="tab" role="tab" data-at="offer" aria-selected="true">Aanbieden</button>
+      <button class="tab" role="tab" data-at="lots" aria-selected="false">Mijn partijen</button>
+      <button class="tab" role="tab" data-at="events" aria-selected="false">Berichten en orders <span class="n" id="at-n-events" hidden>0</span></button>
+      <button class="tab" role="tab" data-at="verify" aria-selected="false">Webhook controleren</button>
+      <button class="tab" role="tab" data-at="raw" aria-selected="false">Vrij verzoek</button>
+      <button class="tab" role="tab" data-at="log" aria-selected="false">Logboek <span class="n" id="at-n-log">0</span></button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap at-main">
+  <!-- Verbinding -->
+  <section class="panel at-conn">
+    <div class="panel-head"><div><h3>Verbinding</h3><div class="meta">Werkt als een ERP: elk verzoek gaat met je API-sleutel naar <code id="at-base"></code>. Maak een sleutel in de app onder Mijn account → API-koppelingen.</div></div></div>
+    <form class="form" id="at-conn" autocomplete="off">
+      <div class="field full"><label for="at-key">API-sleutel</label>
+        <div class="actions"><input id="at-key" type="password" spellcheck="false" placeholder="fs_test_… of fs_live_…" style="flex:1 1 320px"><button class="btn primary" type="submit">Verbinden</button><button class="btn" type="button" id="at-forget">Vergeten</button></div>
+        <label class="check" style="margin-top:6px"><input type="checkbox" id="at-remember"> Onthouden in dit tabblad (tot je het tabblad sluit)</label>
+      </div>
+      <div class="full at-who" id="at-who" hidden></div>
+      <div class="full err" id="at-conn-err"></div>
+    </form>
+  </section>
+
+  <!-- Aanbieden -->
+  <section data-atpane="offer">
+    <div class="pane-head"><h2>Partij aanbieden of bijwerken</h2>
+      <div class="actions"><select id="at-example" aria-label="Voorbeeld"><option value="">Voorbeeld invullen…</option><option value="elstar">Elstar, fruit</option><option value="agria">Agria, aardappelen</option><option value="tomaat">Trostomaten, groente</option><option value="fout">Met fouten (test de foutmeldingen)</option></select></div></div>
+    <div class="at-split">
+      <form class="panel form" id="at-offer" novalidate>
+        <div class="field"><label for="o-ext">ERP-nummer (externalId)</label><div class="actions"><input id="o-ext" style="flex:1 1 160px"><button class="btn small" type="button" id="o-ext-new" title="Nieuw nummer">Nieuw</button></div><span class="hint">Zelfde nummer = bijwerken, nieuw nummer = nieuwe partij.</span></div>
+        <div class="field"><label for="o-product">Product *</label><input id="o-product"></div>
+        <div class="field"><label for="o-variety">Ras / soort</label><input id="o-variety"></div>
+        <div class="field"><label for="o-category">Categorie *</label><select id="o-category"><option value="vegetables">vegetables (groente)</option><option value="fruit">fruit</option><option value="potatoes">potatoes (aardappelen)</option></select></div>
+        <div class="field"><label for="o-quality">Klasse</label><select id="o-quality"><option value="class-1">class-1</option><option value="class-2">class-2</option><option value="processing">processing (industrie)</option><option value="organic-class-1">organic-class-1</option><option value="organic-class-2">organic-class-2</option></select></div>
+        <div class="field"><label for="o-origin">Herkomst (landcode)</label><input id="o-origin" maxlength="2" placeholder="NL"></div>
+        <div class="field"><label for="o-quantity">Hoeveelheid *</label><input id="o-quantity" inputmode="decimal"></div>
+        <div class="field"><label for="o-unit">Eenheid *</label><select id="o-unit"><option value="case">case (colli)</option><option value="kg">kg</option><option value="pallet">pallet</option><option value="crate">crate (kist)</option><option value="bag">bag (zak)</option></select></div>
+        <div class="field"><label for="o-price">Prijs per eenheid (€, excl. btw) *</label><input id="o-price" inputmode="decimal"></div>
+        <div class="field"><label for="o-min">Minimale afname</label><input id="o-min" inputmode="decimal"></div>
+        <div class="field"><label for="o-weight">Kg per eenheid</label><input id="o-weight" inputmode="decimal"></div>
+        <div class="field"><label for="o-until">Beschikbaar tot</label><input id="o-until" type="date"></div>
+        <div class="field"><label for="o-location">Afhaallocatie</label><input id="o-location"></div>
+        <div class="field"><label for="o-packaging">Verpakking</label><input id="o-packaging"></div>
+        <div class="field"><label for="o-gtin">GTIN</label><input id="o-gtin" inputmode="numeric"></div>
+        <div class="field"><label for="o-gln">GLN</label><input id="o-gln" inputmode="numeric"></div>
+        <div class="field full"><label for="o-note">Opmerking voor kopers</label><textarea id="o-note" rows="2"></textarea></div>
+        <div class="full actions">
+          <button class="btn primary" type="submit" data-mode="put">Aanbieden / bijwerken (PUT)</button>
+          <button class="btn" type="button" id="o-post">Nieuw (POST)</button>
+          <button class="btn" type="button" id="o-patch" title="Alleen hoeveelheid en prijs">Alleen voorraad en prijs (PATCH)</button>
+        </div>
+      </form>
+      <div class="at-side">
+        <div class="at-box"><div class="at-box-head">Verzoek</div><pre id="o-req" class="at-json"></pre></div>
+        <div class="at-box"><div class="at-box-head">Antwoord <span id="o-status"></span></div><pre id="o-res" class="at-json at-muted">Nog niets verstuurd.</pre></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mijn partijen -->
+  <section data-atpane="lots" hidden>
+    <div class="pane-head"><h2>Mijn partijen</h2>
+      <div class="actions"><div class="seg" id="l-filter"><button type="button" data-s="" aria-pressed="true">Alle</button><button type="button" data-s="open" aria-pressed="false">Open</button><button type="button" data-s="sold" aria-pressed="false">Verkocht</button><button type="button" data-s="withdrawn" aria-pressed="false">Ingetrokken</button><button type="button" data-s="expired" aria-pressed="false">Verlopen</button></div>
+        <button class="btn small" type="button" id="l-refresh">Vernieuwen</button></div></div>
+    <div class="panel tablewrap"><table class="bids at-table"><thead><tr><th>ERP-nummer</th><th>Product</th><th class="num">Hoeveelheid</th><th class="num">Rest</th><th class="num">Prijs</th><th>Status</th><th class="num">Gunningen</th><th></th></tr></thead><tbody id="l-body"><tr><td colspan="8" class="at-muted">Verbind eerst met je sleutel.</td></tr></tbody></table></div>
+  </section>
+
+  <!-- Berichten en orders -->
+  <section data-atpane="events" hidden>
+    <div class="pane-head"><h2>Berichten en orders</h2>
+      <div class="actions"><label class="check"><input type="checkbox" id="e-auto" checked> Elke 15 seconden ophalen</label><button class="btn small" type="button" id="e-now">Nu ophalen</button><button class="btn small" type="button" id="e-reset" title="Alles opnieuw ophalen vanaf het eerste bericht">Vanaf het begin</button></div></div>
+    <p class="at-help">Zo werkt een ERP: het haalt met <code>GET /events?after=&lt;laatste id&gt;</code> nieuwe berichten op en maakt van elke gunning een order. Een bericht dat al verwerkt is, wordt herkend aan zijn id en niet nog een keer geboekt. <span id="e-state"></span></p>
+    <details class="at-howto"><summary>Zo test je een bod en een gunning</summary>
+      <ol>
+        <li>Bied hier een partij aan.</li>
+        <li>Log in de app (bijvoorbeeld in een privévenster) in als een <b>ander bedrijf</b> en breng een bod uit. Hier verschijnt <code>bid.received</code>.</li>
+        <li>Gun het bod in de app als verkoper (Mijn partijen → Gunnen). Hier verschijnt <code>lot.awarded</code> met een verkooporder.</li>
+        <li>Verbind deze tester met een sleutel van het kopende bedrijf om de inkooporder (<code>role: buyer</code>) te zien.</li>
+      </ol></details>
+    <div id="e-list" class="at-events"><p class="at-muted">Nog geen berichten.</p></div>
+  </section>
+
+  <!-- Webhook controleren -->
+  <section data-atpane="verify" hidden>
+    <div class="pane-head"><h2>Webhook-handtekening controleren</h2></div>
+    <p class="at-help">Plak een bericht zoals jouw ontvanger het kreeg. Zo controleer je of je eigen implementatie dezelfde uitkomst geeft. Het geheim blijft in deze pagina; er wordt niets verstuurd.</p>
+    <form class="panel form" id="v-form" novalidate>
+      <div class="field full"><label for="v-sig">Header <code>FoodSource-Signature</code></label><input id="v-sig" spellcheck="false" placeholder="t=1792000000,v1=…"></div>
+      <div class="field full"><label for="v-secret">Webhookgeheim</label><input id="v-secret" type="password" spellcheck="false" placeholder="whsec_…"></div>
+      <div class="field full"><label for="v-body">Ruwe body (precies zoals ontvangen)</label><textarea id="v-body" rows="8" spellcheck="false" class="at-mono"></textarea></div>
+      <div class="full actions"><button class="btn primary" type="submit">Controleren</button></div>
+      <div class="full" id="v-result"></div>
+    </form>
+  </section>
+
+  <!-- Vrij verzoek -->
+  <section data-atpane="raw" hidden>
+    <div class="pane-head"><h2>Vrij verzoek</h2></div>
+    <p class="at-help">Stuur elk verzoek zelf, bijvoorbeeld om foutmeldingen te testen. Het pad komt achter <code id="r-base"></code>.</p>
+    <div class="at-split">
+      <form class="panel form" id="r-form" novalidate style="grid-template-columns:1fr">
+        <div class="field"><label for="r-path">Methode en pad</label><div class="actions"><select id="r-method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select><input id="r-path" value="/lots" spellcheck="false" style="flex:1 1 220px"></div>
+          <span class="hint">Bijv. <code>/me</code>, <code>/lots?status=open</code>, <code>/lots/ext:TEST-1/bids</code>, <code>/events?after=0</code>, <code>/reason-codes</code></span></div>
+        <div class="field"><label for="r-body">Body (JSON)</label><textarea id="r-body" rows="12" spellcheck="false" class="at-mono"></textarea></div>
+        <div class="actions"><button class="btn primary" type="submit">Versturen</button><button class="btn" type="button" id="r-curl">Kopieer als curl</button></div>
+      </form>
+      <div class="at-side"><div class="at-box"><div class="at-box-head">Antwoord <span id="r-status"></span></div><pre id="r-res" class="at-json at-muted">Nog niets verstuurd.</pre></div></div>
+    </div>
+  </section>
+
+  <!-- Logboek -->
+  <section data-atpane="log" hidden>
+    <div class="pane-head"><h2>Logboek van deze sessie</h2><button class="btn small" type="button" id="g-clear">Leegmaken</button></div>
+    <div id="g-list" class="at-log"><p class="at-muted">Nog geen verzoeken.</p></div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/js/api-tester.js"></script>
+</body>
+</html>
