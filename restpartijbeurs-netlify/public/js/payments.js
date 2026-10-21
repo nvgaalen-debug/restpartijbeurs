@@ -80,6 +80,10 @@ function fillSettings() {
   $("#st-auto").checked = !!s.autoApprovePaid;
   $("#st-require").checked = s.requireSubscription !== false;
   $("#st-api").checked = !!s.apiEnabled;
+  $("#st-ai").checked = !!s.aiSwitch;
+  $("#st-ai-card").innerHTML = s.aiConfigured
+    ? `<span class="pill ${s.aiEnabled ? "ok" : "off"}">${s.aiEnabled ? "Aan" : "Uit"}</span> Gekoppeld met Claude (model <code>${esc(s.aiModel)}</code>). Kosten: ruim minder dan € 0,01 per foto.`
+    : `<span class="pill off">Niet gekoppeld</span> Zet in Netlify <code>ANTHROPIC_API_KEY</code> (een sleutel van console.anthropic.com) en doe een nieuwe deploy.`;
   $$("input[name=st-pm]").forEach((c) => (c.checked = (s.payMethods || []).includes(c.value)));
   $("#st-mollie").innerHTML = s.onlinePayment
     ? `<span class="pill ${s.paymentTestMode ? "warn" : "ok"}">${s.paymentTestMode ? "Testmodus" : "Live"}</span> Mollie is gekoppeld. ${s.paymentTestMode ? "Betalingen zijn testbetalingen; er wordt geen geld overgemaakt." : "Handelaren kunnen hun abonnement online betalen."}`
@@ -128,7 +132,7 @@ $("#form-settings").addEventListener("submit", async (e) => {
     const d = await api("admin/settings", { method: "PUT", body: {
       siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
       registrationOpen: $("#st-reg").checked, subscriptionPriceCents: priceCents, subscriptionText: $("#st-subtext").value,
-      vatPercent: vat, autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, apiEnabled: $("#st-api").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
+      vatPercent: vat, autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, apiEnabled: $("#st-api").checked, aiEnabled: $("#st-ai").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
     } });
     applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");
   } catch (err) { $("#st-err").textContent = err.message; }

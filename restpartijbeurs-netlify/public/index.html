@@ -417,6 +417,9 @@
           <div class="field full"><label for="st-subtext">Tekst bij het aanvraagformulier</label><input id="st-subtext" maxlength="300" placeholder="bijv. Abonnement € 120 per jaar excl. btw, factuur na goedkeuring."></div>
           <div class="fieldset-title">Koppelingen (FoodSource API)</div>
           <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-api"> API voor koppelingen aan</label><span class="hint">Handelaren kunnen dan onder Mijn account → API-koppelingen sleutels maken, zodat hun ERP zelf partijen aanmeldt en gunningen ophaalt. Uitzetten blokkeert alle sleutels direct.</span></div>
+          <div class="fieldset-title">AI: invullen op basis van een foto</div>
+          <div class="field full"><div class="ct-card" id="st-ai-card"></div></div>
+          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-ai"> Velden van een partij laten voorstellen op basis van de eerste foto</label><span class="hint">De foto gaat naar Claude (Anthropic) om product, categorie, verpakking en meer te herkennen. De aanbieder controleert altijd zelf. Anthropic gebruikt API-gegevens niet om modellen te trainen.</span></div>
           <div class="fieldset-title">E-mail</div>
           <div class="field full"><div class="ct-card" id="st-mail"></div></div>
           <div class="field full" id="st-testmail-row" hidden><label for="st-testmail">Testmail sturen naar</label>
@@ -448,6 +451,15 @@
   <form id="form-lot" novalidate>
     <div class="dlg-head"><h2 id="lot-title">Partij aanbieden</h2><p>Vul de gegevens van de restpartij in. Alle velden zijn zichtbaar voor kopers.</p></div>
     <div class="form">
+      <div class="field full ai-strip" id="ai-strip" hidden>
+        <div class="ai-strip-row">
+          <svg class="ai-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <div class="ai-strip-text"><b id="ai-title">Begin met een foto</b><span class="hint" id="ai-hint">De app herkent product, categorie, verpakking en meer, en vult die alvast in. Jij controleert alles en vult hoeveelheid, prijs en datum zelf in.</span></div>
+          <button class="btn primary small" type="button" id="ai-btn">Foto maken</button>
+        </div>
+        <div class="ai-status" id="ai-status" role="status" aria-live="polite" hidden></div>
+        <input id="f-photo-cam" type="file" accept="image/*" capture="environment" hidden>
+      </div>
       <div class="field"><label for="f-product">Product</label><input id="f-product" required placeholder="bijv. Trostomaten" list="dl-products"></div>
       <div class="field"><label for="f-ras">Ras / soort</label><input id="f-ras" placeholder="bijv. Elstar, Agria"></div>
       <div class="field"><label for="f-cat">Categorie</label>
@@ -643,6 +655,7 @@
 
 <script src="/js/core.js"></script>
 <script src="/js/market.js"></script>
+<script src="/js/ai.js"></script>
 <script src="/js/account.js"></script>
 <script src="/js/admin.js"></script>
 <script src="/js/payments.js"></script>

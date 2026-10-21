@@ -16,11 +16,14 @@
 //   GMAIL_APP_PASSWORD App-wachtwoord van dat Google-account            nodig bij GMAIL_USER
 //   BREVO_API_KEY      Alternatief: Brevo-sleutel                       optioneel
 //   MAIL_FROM          Afzenderadres bij Brevo, bijv. noreply@jouwdomein.nl
+//   ANTHROPIC_API_KEY  Sleutel voor AI (velden invullen op basis van een foto)   optioneel
+//   AI_MODEL           AI-model, standaard claude-haiku-5-5                      optioneel
 
 import pg from "pg";
 import crypto from "node:crypto";
 import tls from "node:tls";
 import { createV1 } from "../lib/foodsource-v1.mjs";
+import { createAi, aiConfigured, aiModel } from "../lib/ai-photo.mjs";
 
 export const config = { path: "/api/*" };
 
@@ -358,6 +361,7 @@ const SETTING_DEFAULTS = {
   autoApprovePaid: "false",        // aanvraag automatisch goedkeuren na online betaling
   requireSubscription: "true",     // zonder geldig abonnement niet aanbieden/bieden
   apiEnabled: "false",             // FoodSource API v1 voor koppelingen met ERP-systemen
+  aiEnabled: "false",              // velden van een partij laten invullen op basis van een foto
   reasonCodes: JSON.stringify([    // redenen bij het intrekken van een advertentie
     { code: "VERK", label: "Buiten het platform verkocht", active: true, needsNote: false },
     { code: "KWAL", label: "Kwaliteit niet meer goed", active: true, needsNote: false },
@@ -401,6 +405,10 @@ async function getSettings() {
     autoApprovePaid: s.autoApprovePaid === "true",
     requireSubscription: s.requireSubscription !== "false",
     apiEnabled: s.apiEnabled === "true",
+    aiEnabled: s.aiEnabled === "true" && aiConfigured(),
+    aiSwitch: s.aiEnabled === "true",
+    aiConfigured: aiConfigured(),
+    aiModel: aiConfigured() ? aiModel() : "",
     reasonCodes: parseReasons(s.reasonCodes),
     onlinePayment: !!process.env.MOLLIE_API_KEY,
     paymentTestMode: String(process.env.MOLLIE_API_KEY || "").startsWith("test_"),
@@ -943,6 +951,7 @@ function bidsView(me, bidderId, data) {
 }
 
 // ---------- FoodSource API v1 ----------
+const AI = createAi({ q, httpError, log });
 const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES });
 
 // ---------- routes ----------
@@ -1237,6 +1246,14 @@ async function route(req, ctx = {}) {
     await q("INSERT INTO rpb_photos (id, owner, mime, thumb, full_img, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
       [id, me.id, full.mime, thumb.b64, full.b64, new Date()]);
     return json(200, { id });
+  }
+
+  // AI: velden van een partij voorstellen op basis van een eigen foto
+  if (a === "ai" && b === "lot-photo" && !c && method === "POST") {
+    await requireTrade(me);
+    if (!(await getSettings()).aiEnabled) throw httpError(403, "AI-herkenning staat uit.");
+    const body = await readBody(req);
+    return json(200, await AI.suggestFromPhoto(me, str(body.photoId, 40)));
   }
 
   // Foto verwijderen: eigen foto, of elke foto als beheerder
@@ -1612,6 +1629,7 @@ async function route(req, ctx = {}) {
         autoApprovePaid: body.autoApprovePaid === true ? "true" : "false",
         requireSubscription: body.requireSubscription === false ? "false" : "true",
         apiEnabled: body.apiEnabled === undefined ? String(before.apiEnabled) : body.apiEnabled === true ? "true" : "false",
+        aiEnabled: body.aiEnabled === undefined ? String(before.aiSwitch) : body.aiEnabled === true ? "true" : "false",
       };
       for (const [k, v] of Object.entries(vals)) {
         await q("INSERT INTO rpb_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [k, v]);

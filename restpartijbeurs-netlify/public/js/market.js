@@ -236,6 +236,7 @@ function openLotDialog(lotId) {
   S.lotSaved = false;
   S.uploading = 0;
   renderPhotoEdit();
+  document.dispatchEvent(new CustomEvent("lot-dialog-open"));
   dlgLot.showModal();
   $("#f-product").focus();
 }
@@ -278,6 +279,7 @@ async function addPhotos(files) {
       const thumb = shrink(img, 360, 50 * 1024, 0.75);
       const d = await api("photos", { method: "POST", body: { full, thumb } });
       S.dlgPhotos.push(d.id); S.newPhotos.push(d.id);
+      document.dispatchEvent(new CustomEvent("lot-photo-added", { detail: d.id }));
     } catch (err) { toast(err.message || "Uploaden lukte niet."); }
     finally { S.uploading--; renderPhotoEdit(); }
   }

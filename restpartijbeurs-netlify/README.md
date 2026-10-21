@@ -19,6 +19,8 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/js/integrations.js` | Mijn account → API-koppelingen: sleutels en webhook |
 | `public/api-tester.html`, `public/js/api-tester.js` | API-tester (ERP-simulator) op `/api-tester.html`: partijen aanbieden via de API, berichten en orders bekijken |
 | `public/openapi.yaml` | Technische beschrijving van de API (OpenAPI 3.1) |
+| `public/js/ai.js` | Partij aanbieden: velden laten invullen op basis van een foto |
+| `netlify/lib/ai-photo.mjs` | Serverkant van de foto-herkenning (Claude via de Anthropic API) |
 | `public/js/start.js` | Start de app (wordt als laatste geladen) |
 | `public/_headers` | Beveiligingsheaders voor de website (o.a. Content-Security-Policy) |
 | `netlify/functions/api.mjs` | De serverfunctie op `/api/...`: inloggen, gebruikers, partijen en biedingen |
@@ -70,6 +72,17 @@ Upload altijd **alle gewijzigde bestanden in één keer**. De bestanden in `publ
 
 Vervang het gewijzigde bestand op GitHub en kies **Commit changes**. Netlify bouwt zelf opnieuw.
 Gegevens blijven staan; ingelogde gebruikers blijven ingelogd.
+
+## AI: velden invullen op basis van een foto
+
+Bij **Partij aanbieden** maakt de aanbieder een foto; Claude stelt product, ras, categorie, klasse, herkomst (als die op de verpakking staat), eenheid, verpakking, kg per eenheid en een korte toelichting voor. De aanbieder controleert de gemarkeerde velden en vult hoeveelheid, prijs en datum zelf in. Wat de aanbieder al zelf heeft ingevuld, blijft staan.
+
+Aanzetten:
+1. Maak een API-sleutel op [console.anthropic.com](https://console.anthropic.com) (zet er een maandlimiet op).
+2. Zet hem in Netlify als `ANTHROPIC_API_KEY` en doe een nieuwe deploy. Optioneel: `AI_MODEL` (standaard `claude-haiku-5-5`, snel en goedkoop; `claude-sonnet-5-5` herkent nauwkeuriger maar is trager).
+3. Zet als beheerder onder **Website-instellingen → AI** het vinkje aan.
+
+Grenzen: maximaal 60 foto's per uur per gebruiker en 1000 per dag voor de hele site; na 9 seconden zonder antwoord stopt de herkenning (Netlify-limiet). Elk voorstel staat in het logboek, met model en verbruik.
 
 ## FoodSource API v1 (koppelingen)
 

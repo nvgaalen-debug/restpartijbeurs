@@ -364,3 +364,18 @@ dialog.wide { width: min(760px, calc(100vw - 32px)); }
 .at-logrow .btn { margin-top: 8px; }
 .at .tablewrap { overflow-x: auto; }
 .at .field label.check, .at label.check { white-space: normal; }
+
+/* AI: velden invullen op basis van een foto */
+.ai-strip { border: 1px dashed var(--accent); border-radius: var(--r); background: var(--accent-soft); padding: 10px 12px; gap: 8px; }
+.ai-strip-row { display: flex; align-items: center; gap: 12px; }
+.ai-strip-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.ai-strip-text b { font-size: 14px; }
+.ai-icon { width: 28px; height: 28px; color: var(--accent); flex: none; }
+@media (max-width: 480px) { .ai-strip-row { flex-wrap: wrap; } .ai-strip-text { flex: 1 1 200px; } .ai-strip-row .btn { width: 100%; } }
+.ai-status { font-size: 13.5px; line-height: 1.45; padding-top: 8px; border-top: 1px solid var(--line); }
+.ai-status.warn { color: var(--warn); }
+.ai-status .pill { margin-right: 4px; }
+.field .ai-filled, .field input.ai-filled, .field select.ai-filled, .field textarea.ai-filled { border-color: var(--accent); background: var(--accent-soft); }
+.ai-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; vertical-align: -1px; margin-right: 4px; animation: ai-spin .8s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ai-spin { animation: none; } }
