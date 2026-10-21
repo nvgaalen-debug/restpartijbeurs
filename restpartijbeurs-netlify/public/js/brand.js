@@ -98,7 +98,7 @@ async function pick(e, which) {
   if (!f) return;
   try {
     const im = await fileToImage(f);
-    LG[which] = im; if (which === "logo") LG.newLogo = true;
+    LG[which] = im; LG.newLogo = true; // nieuw logo of nieuw icoon: altijd nieuwe iconen meesturen
     // Achtergrondkleur of apart icoon gekozen zonder nieuw logo: het bestaande logo opnieuw gebruiken
     if (which === "icon" && !LG.logo && S.settings?.logoVersion) LG.logo = await loadImage(brandUrl("logo", S.settings));
     await previewLogo();
@@ -115,6 +115,7 @@ $("#logo-showname").addEventListener("change", previewLogo);
 $("#logo-save").addEventListener("click", async () => {
   const btn = $("#logo-save");
   const body = { bg: $("#logo-bg").value, showName: $("#logo-showname").checked };
+  if (LG.newLogo && !LG.logo) { logoMsg("Het huidige logo kon niet geladen worden. Kies het logo opnieuw via \"Logo kiezen…\".", "warn"); return; }
   if (LG.newLogo && LG.logo) {
     const src = LG.icon || LG.logo;
     body.logo = renderLogo(LG.logo);
