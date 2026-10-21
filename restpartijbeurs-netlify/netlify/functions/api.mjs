@@ -41,13 +41,13 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
-const SCHEMA_VERSION = "2026-10-20a"; // verhogen bij elke wijziging in ensureSchema
+const SCHEMA_VERSION = "2026-10-21a"; // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 // Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
 // Alleen tabellen van de Restpartijbeurs (vaste lijst), nooit die van een andere app (zoals records van Vloeren Kassa).
 const PG_MIGRATE_FROM = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_MIGRATE_FROM || "") ? process.env.PG_MIGRATE_FROM : "";
-const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events"];
+const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets"];
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -225,6 +225,13 @@ async function ensureSchema() {
       await q("CREATE INDEX IF NOT EXISTS rpb_events_due ON rpb_events (next_attempt_at) WHERE delivered_at IS NULL AND next_attempt_at IS NOT NULL");
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS webhook_url TEXT NOT NULL DEFAULT ''");
       await q("ALTER TABLE rpb_users ADD COLUMN IF NOT EXISTS webhook_secret TEXT NOT NULL DEFAULT ''");
+      // Huisstijl: logo en app-iconen (apart van rpb_settings, die bij elk verzoek gelezen wordt)
+      await q(`CREATE TABLE IF NOT EXISTS rpb_assets (
+        key TEXT PRIMARY KEY,
+        mime TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+      )`);
       await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
   }
@@ -362,6 +369,9 @@ const SETTING_DEFAULTS = {
   requireSubscription: "true",     // zonder geldig abonnement niet aanbieden/bieden
   apiEnabled: "false",             // FoodSource API v1 voor koppelingen met ERP-systemen
   aiEnabled: "false",              // velden van een partij laten invullen op basis van een foto
+  logoVersion: "",                 // leeg = geen eigen logo; anders wisselt de waarde bij elk nieuw logo
+  logoShowName: "true",            // naam van de website naast het logo tonen
+  logoBg: "#ffffff",               // achtergrondkleur van het app-icoon
   reasonCodes: JSON.stringify([    // redenen bij het intrekken van een advertentie
     { code: "VERK", label: "Buiten het platform verkocht", active: true, needsNote: false },
     { code: "KWAL", label: "Kwaliteit niet meer goed", active: true, needsNote: false },
@@ -370,6 +380,26 @@ const SETTING_DEFAULTS = {
     { code: "ANDR", label: "Anders", active: true, needsNote: true },
   ]),
 };
+// ---------- huisstijl: logo en app-iconen ----------
+// Adres → sleutel in rpb_assets. De browser maakt de iconen zelf (vierkant, met achtergrondkleur) uit het logo.
+const BRAND_FILES = { logo: "logo", "icon-512.png": "icon512", "icon-192.png": "icon192", "icon-180.png": "icon180", "icon-32.png": "icon32" };
+const ICON_SIZES = { icon512: 512, icon192: 192, icon180: 180, icon32: 32 };
+const MAX_LOGO_BYTES = 600 * 1024;
+// Alleen echte PNG-, JPEG- of WebP-bestanden (geen SVG: daar kan code in zitten)
+function parseImage(dataUrl, { max, png = false, size = 0 }) {
+  const m = typeof dataUrl === "string" && dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!m || (png && m[1] !== "image/png")) throw httpError(400, png ? "Het app-icoon moet een PNG-bestand zijn." : "Gebruik een PNG-, JPEG- of WebP-bestand.");
+  const buf = Buffer.from(m[2], "base64");
+  if (buf.length > max) throw httpError(413, "Het logo is te groot. Gebruik een kleiner bestand (maximaal 600 kB).");
+  const isPng = buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47;
+  const isJpeg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  const isWebp = buf.slice(0, 4).toString("latin1") === "RIFF" && buf.slice(8, 12).toString("latin1") === "WEBP";
+  const ok = m[1] === "image/png" ? isPng : m[1] === "image/jpeg" ? isJpeg : isWebp;
+  if (!ok) throw httpError(400, "Dit bestand is geen geldige afbeelding.");
+  if (size && (buf.readUInt32BE(16) !== size || buf.readUInt32BE(20) !== size)) throw httpError(400, `Het app-icoon moet ${size} × ${size} pixels zijn.`);
+  return { mime: m[1], b64: buf.toString("base64") };
+}
+
 function parseReasons(v) {
   try {
     const arr = JSON.parse(v);
@@ -410,6 +440,9 @@ async function getSettings() {
     aiConfigured: aiConfigured(),
     aiModel: aiConfigured() ? aiModel() : "",
     reasonCodes: parseReasons(s.reasonCodes),
+    logoVersion: /^[a-f0-9]{8,16}$/.test(s.logoVersion) ? s.logoVersion : "",
+    logoShowName: s.logoShowName !== "false",
+    logoBg: /^#[0-9a-f]{6}$/i.test(s.logoBg) ? s.logoBg.toLowerCase() : "#ffffff",
     onlinePayment: !!process.env.MOLLIE_API_KEY,
     paymentTestMode: String(process.env.MOLLIE_API_KEY || "").startsWith("test_"),
     mailEnabled: mailEnabled(),
@@ -422,7 +455,7 @@ async function getSettings() {
 // Leegmaken mag standaard alleen in de testomgeving
 function wipeAllowed() { return process.env.APP_ENV === "test" || process.env.ALLOW_WIPE === "true"; }
 const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events"];
-const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_events", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
+const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
 
 // ---------- e-mail: via Gmail (SMTP) of via Brevo ----------
 const MAIL_BASE = process.env.MAIL_API_BASE || "https://api.brevo.com/v3";
@@ -490,7 +523,12 @@ async function sendMail({ to, toName, subject, text, html }) {
   const provider = mailProvider();
   if (!provider) throw httpError(503, "E-mail is nog niet ingesteld (GMAIL_USER en GMAIL_APP_PASSWORD in Netlify).");
   if (/[\r\n<>]/.test(to)) throw httpError(400, "Ongeldig e-mailadres.");
-  const siteName = (await getSettings()).siteName;
+  const st = await getSettings(), siteName = st.siteName;
+  // Logo bovenaan de HTML-mail (alleen als de site een vast adres heeft; mailprogramma's laden het van onze server)
+  const base = (process.env.URL || "").replace(/\/$/, "");
+  if (html && st.logoVersion && /^https:\/\//.test(base)) {
+    html = `<p style="margin:0 0 16px"><img src="${base}/api/brand/logo?v=${st.logoVersion}" alt="${escHtml(siteName)}" style="max-height:56px;max-width:240px;height:auto"></p>` + html;
+  }
   if (provider === "gmail") {
     return smtpSend({
       host: process.env.MAIL_SMTP_HOST || "smtp.gmail.com", port: Number(process.env.MAIL_SMTP_PORT) || 465,
@@ -1174,6 +1212,40 @@ async function route(req, ctx = {}) {
     });
   }
 
+  // Huisstijl (zonder login): logo en app-iconen. Met ?v=<versie> mag de browser ze voor altijd bewaren.
+  if (a === "brand" && b && !c && method === "GET") {
+    const key = BRAND_FILES[b];
+    if (!key) throw httpError(404, "Niet gevonden.");
+    const r = await q("SELECT mime, data FROM rpb_assets WHERE key = $1", [key]);
+    const row = r.rows[0];
+    if (!row) {
+      if (key === "logo") throw httpError(404, "Er is geen logo ingesteld.");
+      return new Response(null, { status: 302, headers: { location: `/icons/${b}`, "cache-control": "public, max-age=300" } });
+    }
+    const v = url.searchParams.get("v"), cur = (await getSettings()).logoVersion;
+    const forever = v && v === cur;
+    return new Response(Buffer.from(row.data, "base64"), {
+      status: 200,
+      headers: {
+        "content-type": row.mime,
+        "cache-control": forever ? "public, max-age=31536000, immutable" : "public, max-age=300",
+        ...(forever ? { "netlify-cdn-cache-control": "public, max-age=31536000, immutable, durable" } : {}),
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
+  // App-manifest: naam en icoon als iemand de site op het beginscherm zet (Android, Chrome, Edge)
+  if (a === "manifest.webmanifest" && !b && method === "GET") {
+    const s = await getSettings();
+    const v = s.logoVersion ? `?v=${s.logoVersion}` : "";
+    const icon = (n) => ({ src: `/api/brand/icon-${n}.png${v}`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" });
+    const body = JSON.stringify({
+      name: s.siteName, short_name: s.siteName.slice(0, 24), lang: "nl", start_url: "/", scope: "/", display: "standalone",
+      background_color: s.logoBg, theme_color: s.logoBg, icons: [icon(192), icon(512)],
+    });
+    return new Response(body, { status: 200, headers: { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "public, max-age=300" } });
+  }
+
   // Mollie meldt een statuswijziging (zonder login). We vertrouwen de melding niet,
   // maar halen de status zelf bij Mollie op.
   if (a === "mollie" && b === "webhook" && method === "POST") {
@@ -1602,6 +1674,32 @@ async function route(req, ctx = {}) {
       if (validDate(to)) add("at < ?", amsMidnight(addDay(to)));
       const r = await q(`SELECT id, at, user_name, kind, detail FROM rpb_log ${conds.length ? "WHERE " + conds.join(" AND ") : ""} ORDER BY id DESC LIMIT ${limit}`, params);
       return json(200, { entries: r.rows.map((x) => ({ id: Number(x.id), at: new Date(x.at).toISOString(), user: x.user_name, kind: x.kind, detail: x.detail })) });
+    }
+
+    // Logo en app-iconen instellen of weghalen
+    if (b === "logo" && method === "PUT") {
+      const body = await readBody(req);
+      const bg = typeof body.bg === "string" && /^#[0-9a-f]{6}$/i.test(body.bg) ? body.bg.toLowerCase() : "#ffffff";
+      const showName = body.showName !== false;
+      const now = new Date();
+      if (body.logo !== undefined) {
+        const logo = parseImage(body.logo, { max: MAX_LOGO_BYTES });
+        const icons = {};
+        for (const [k, n] of Object.entries(ICON_SIZES)) icons[k] = parseImage(body.icons?.[n], { max: 300 * 1024, png: true, size: n });
+        for (const [k, img] of [["logo", logo], ...Object.entries(icons)]) {
+          await q("INSERT INTO rpb_assets (key, mime, data, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO UPDATE SET mime = EXCLUDED.mime, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at", [k, img.mime, img.b64, now]);
+        }
+        await q("INSERT INTO rpb_settings (key, value) VALUES ('logoVersion', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [crypto.randomBytes(6).toString("hex")]);
+      } else if (!(await getSettings()).logoVersion) throw httpError(400, "Kies eerst een logo.");
+      await q("INSERT INTO rpb_settings (key, value) VALUES ('logoShowName', $1), ('logoBg', $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [String(showName), bg]);
+      await log(me, "beheer", body.logo !== undefined ? "Nieuw logo ingesteld" : "Weergave van het logo gewijzigd");
+      return json(200, { settings: await getSettings() });
+    }
+    if (b === "logo" && method === "DELETE") {
+      await q("DELETE FROM rpb_assets WHERE key IN ('logo', 'icon512', 'icon192', 'icon180', 'icon32')");
+      await q("DELETE FROM rpb_settings WHERE key IN ('logoVersion', 'logoShowName', 'logoBg')");
+      await log(me, "beheer", "Logo verwijderd");
+      return json(200, { settings: await getSettings() });
     }
 
     // Website-instellingen

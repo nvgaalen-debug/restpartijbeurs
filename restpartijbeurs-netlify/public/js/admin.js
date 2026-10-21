@@ -440,6 +440,7 @@ function applySettings(s) {
   S.settings = s;
   forgotTexts();
   $("#site-name").textContent = s.siteName;
+  if (typeof applyBrand === "function") applyBrand(s);
   const isTest = s.environment === "test";
   $("#env-test").hidden = !isTest;
   document.title = (isTest ? "[TEST] " : "") + s.siteName;

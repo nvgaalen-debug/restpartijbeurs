@@ -8,6 +8,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/app.css">
+<link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
+<link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
+<link rel="manifest" href="/api/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Restpartijbeurs" id="meta-apptitle">
+<meta name="theme-color" content="#F3F6F1">
 </head>
 <body class="locked">
 <div class="env-test" id="env-test" hidden>TESTOMGEVING · gegevens en betalingen zijn niet echt</div>
@@ -109,7 +116,7 @@
 <header class="top">
   <div class="wrap">
     <div class="top-row">
-      <div class="brand"><h1 id="site-name">Restpartijbeurs</h1><span>Aardappelen · groente · fruit</span></div>
+      <div class="brand"><img class="brand-logo" id="site-logo" alt="" hidden><h1 id="site-name">Restpartijbeurs</h1><span>Aardappelen · groente · fruit</span></div>
       <div class="right">
         <div class="user" id="user-box" hidden>
           <button class="who" id="btn-account" type="button" title="Mijn account"></button>
@@ -396,6 +403,26 @@
       <form class="panel" id="form-settings" novalidate>
         <div class="form">
           <div class="field full"><label for="st-name">Naam van de website</label><input id="st-name" maxlength="60"><span class="hint">Bovenaan elke pagina en in het tabblad van de browser.</span></div>
+          <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Logo</span>
+            <div class="logo-card" id="logo-card">
+              <div class="logo-previews">
+                <div class="logo-prev-bar"><span class="sub">Kopregel</span><div class="logo-prev-head" id="logo-prev-head"><img id="logo-prev-img" alt="" hidden><b id="logo-prev-name"></b></div></div>
+                <div class="logo-prev-app"><span class="sub">App-icoon</span><img id="logo-prev-icon" alt="Voorbeeld van het app-icoon" width="72" height="72"></div>
+              </div>
+              <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+                <label class="btn small" for="logo-file">Logo kiezen…</label><input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+                <label class="btn small ghost" for="logo-icon-file">Apart app-icoon…</label><input id="logo-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+                <label class="check" style="color:var(--ink)">Achtergrond icoon <input type="color" id="logo-bg" value="#ffffff"></label>
+                <label class="check" style="color:var(--ink)"><input type="checkbox" id="logo-showname" checked> Naam naast het logo</label>
+              </div>
+              <div class="actions" style="justify-content:flex-start">
+                <button class="btn small primary" type="button" id="logo-save" disabled>Logo opslaan</button>
+                <button class="btn small ghost" type="button" id="logo-remove" hidden>Logo verwijderen</button>
+                <span class="sub" id="logo-msg"></span>
+              </div>
+              <span class="hint">Verschijnt bovenaan elke pagina, in het tabblad van de browser, in e-mails en als icoon wanneer iemand de site op het beginscherm van zijn telefoon zet. PNG met doorzichtige achtergrond of SVG werkt het mooist. Staat de naam al in het logo, zet dan "Naam naast het logo" uit. Voor het app-icoon gebruikt de app het logo, of een apart (vierkant) beeldmerk als je dat kiest.</span>
+            </div>
+          </div>
           <div class="field full"><label for="st-welcome">Welkomsttekst op het inlogscherm</label><textarea id="st-welcome" rows="3" maxlength="1000" placeholder="bijv. Dé handelsplek voor restpartijen AGF in de regio."></textarea></div>
           <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
           <div class="fieldset-title">Aanmelden en abonnement</div>
@@ -661,6 +688,7 @@
 <script src="/js/payments.js"></script>
 <script src="/js/stats.js"></script>
 <script src="/js/integrations.js"></script>
+<script src="/js/brand.js"></script>
 <script src="/js/start.js"></script>
 </body>
 </html>

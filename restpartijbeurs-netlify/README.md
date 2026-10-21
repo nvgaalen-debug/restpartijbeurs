@@ -20,6 +20,8 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/api-tester.html`, `public/js/api-tester.js` | API-tester (ERP-simulator) op `/api-tester.html`: partijen aanbieden via de API, berichten en orders bekijken |
 | `public/openapi.yaml` | Technische beschrijving van de API (OpenAPI 3.1) |
 | `public/js/ai.js` | Partij aanbieden: velden laten invullen op basis van een foto |
+| `public/js/brand.js` | Eigen logo: kopregel, tabblad-icoon, app-icoon; instellen onder Beheer |
+| `public/icons/` | Standaard app-iconen zolang er geen eigen logo is |
 | `netlify/lib/ai-photo.mjs` | Serverkant van de foto-herkenning (Claude via de Anthropic API) |
 | `public/js/start.js` | Start de app (wordt als laatste geladen) |
 | `public/_headers` | Beveiligingsheaders voor de website (o.a. Content-Security-Policy) |
@@ -83,6 +85,10 @@ Aanzetten:
 3. Zet als beheerder onder **Website-instellingen → AI** het vinkje aan.
 
 Grenzen: maximaal 60 foto's per uur per gebruiker en 1000 per dag voor de hele site; na 9 seconden zonder antwoord stopt de herkenning (Netlify-limiet). Elk voorstel staat in het logboek, met model en verbruik.
+
+## Eigen logo
+
+Beheer → Instellingen → **Logo**: kies een PNG, JPEG, WebP of SVG (een SVG wordt in de browser omgezet naar PNG; de server bewaart nooit SVG). De browser maakt er vierkante app-iconen van (512, 192, 180 en 32 px) met de gekozen achtergrondkleur; voor een breed logo kies je via "Apart app-icoon…" een vierkant beeldmerk. Het logo verschijnt in de kopregel en op het inlogscherm, in het tabblad van de browser, in HTML-e-mails (als `URL` in Netlify een https-adres is) en als icoon wanneer iemand de site op het beginscherm van een telefoon zet (`/api/manifest.webmanifest`, `apple-touch-icon`). Bestanden staan in de tabel `rpb_assets` en worden geserveerd via `/api/brand/logo` en `/api/brand/icon-<maat>.png`.
 
 ## FoodSource API v1 (koppelingen)
 
