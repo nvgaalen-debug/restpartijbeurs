@@ -7,7 +7,7 @@ info:
     Lets an ERP, WMS or inventory system offer surplus lots (fruit, vegetables, potatoes),
     keep them up to date, withdraw them, read bids and receive awards.
 
-    **Authentication**: `Authorization: Bearer <key>`. Keys are created by the company in the
+    **Authentication**: send the key as `X-API-Key: <key>` (recommended) or as `Authorization: Bearer <key>`. Keys are created by the company in the
     FoodSource app under *Mijn account → API-koppelingen*. Production keys start with `fs_live_`,
     test environment keys with `fs_test_`; a key only works in its own environment.
 
@@ -30,7 +30,8 @@ servers:
         default: foodsource.example
         description: Host name of the FoodSource environment.
 security:
-  - apiKey: []
+  - apiKeyHeader: []
+  - bearer: []
 tags:
   - name: Account
   - name: Lots
@@ -367,7 +368,12 @@ webhooks:
 
 components:
   securitySchemes:
-    apiKey:
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: "fs_live_… / fs_test_… (40 characters). Recommended."
+    bearer:
       type: http
       scheme: bearer
       bearerFormat: "fs_live_… / fs_test_… (40 characters)"

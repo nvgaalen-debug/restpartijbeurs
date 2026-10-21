@@ -32,9 +32,11 @@ async function call(method, path, body) {
   try {
     const r = await fetch(BASE + path, {
       method,
-      headers: { authorization: "Bearer " + T.key, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+      headers: { "x-api-key": T.key, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
       body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
-      credentials: "omit", // nooit de sessie van de app meesturen: alleen de sleutel telt
+      // Cookies van de site gaan mee (nodig als Netlify-wachtwoordbeveiliging aan staat).
+      // De API zelf kijkt alleen naar de sleutel, nooit naar de sessie van de app.
+      credentials: "same-origin",
       signal: AbortSignal.timeout(20000),
     });
     entry.status = r.status;
@@ -46,6 +48,14 @@ async function call(method, path, body) {
   T.log.unshift(entry); if (T.log.length > 200) T.log.pop();
   renderLog();
   return entry;
+}
+// Foutmelding uit elk soort antwoord: API v1 ({error:{message}}), de rest van de app ({error:"…"}) of geen JSON
+function errText(r) {
+  const e = r.res && r.res.error;
+  const msg = (e && typeof e === "object" && e.message) || (typeof e === "string" && e)
+    || (typeof r.res === "string" && r.res.trim() ? r.res.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) : "");
+  const netlify = r.status === 401 && typeof r.res === "string" && /Request ID/i.test(r.res);
+  return `${r.status ? "HTTP " + r.status : "Geen verbinding"}${msg ? ": " + msg : ""}${netlify ? " — dit antwoord komt van Netlify zelf, niet van FoodSource. Staat de wachtwoordbeveiliging (Visitor access) van de site aan?" : ""}`;
 }
 function needKey() { if (!T.key) { toast("Verbind eerst met een API-sleutel."); $("#at-key").focus(); return true; } return false; }
 
@@ -66,7 +76,7 @@ async function connect(key) {
   $("#at-conn-err").textContent = ""; $("#at-who").hidden = true;
   if (!/^fs_(live|test)_[A-Za-z0-9_-]{32}$/.test(T.key)) { $("#at-conn-err").textContent = "Dit lijkt geen FoodSource-sleutel (fs_test_… of fs_live_…, 40 tekens)."; T.key = ""; return; }
   const r = await call("GET", "/me");
-  if (r.status !== 200) { $("#at-conn-err").textContent = r.res?.error?.message || "Verbinden mislukt."; T.key = ""; T.me = null; return; }
+  if (r.status !== 200) { $("#at-conn-err").textContent = errText(r); T.key = ""; T.me = null; return; }
   T.me = r.res;
   try { if ($("#at-remember").checked) sessionStorage.setItem("fs-tester.key", T.key); else sessionStorage.removeItem("fs-tester.key"); } catch {}
   const sc = r.res.key.scopes;
@@ -133,7 +143,7 @@ function previewOffer(method = "PUT") {
   let body = offerBody();
   if (method === "POST") body = { externalId: ext, ...body };
   if (method === "PATCH") body = { quantity: body.quantity, price: body.price };
-  $("#o-req").textContent = `${method} ${BASE.replace(location.origin, "")}${path}\nAuthorization: Bearer ${T.me ? T.me.key.prefix + "…" : "fs_…"}\nContent-Type: application/json\n\n${pretty(body)}`;
+  $("#o-req").textContent = `${method} ${BASE.replace(location.origin, "")}${path}\nX-API-Key: ${T.me ? T.me.key.prefix + "…" : "fs_…"}\nContent-Type: application/json\n\n${pretty(body)}`;
   return { path, body };
 }
 $("#at-offer").addEventListener("input", () => previewOffer());
@@ -171,7 +181,7 @@ async function loadLots() {
   if (!T.key) return;
   const r = await call("GET", "/lots" + (lotFilter ? "?status=" + lotFilter : ""));
   const body = $("#l-body");
-  if (r.status !== 200) { body.innerHTML = `<tr><td colspan="8" class="err">${esc(r.res?.error?.message || "Ophalen mislukt")}</td></tr>`; return; }
+  if (r.status !== 200) { body.innerHTML = `<tr><td colspan="8" class="err">${esc(errText(r))}</td></tr>`; return; }
   T.lots = r.res.data;
   body.innerHTML = r.res.data.length ? r.res.data.map((l) => {
     const [cls, word] = STATUS[l.status] || ["off", l.status];
@@ -196,7 +206,7 @@ $("#l-body").addEventListener("click", async (e) => {
   if (b.dataset.act === "bids") {
     const r = await call("GET", `/lots/${encodeURIComponent(l.id)}/bids`);
     const awards = (l.awards || []).map((a) => `<li>Gegund aan <b>${esc(a.buyer.company || a.buyer.id)}</b>: ${nl.format(a.quantity)} × ${eur.format(a.price.amount)} op ${when(a.awardedAt)}</li>`).join("");
-    row.firstElementChild.innerHTML = r.status !== 200 ? `<span class="err">${esc(r.res?.error?.message)}</span>`
+    row.firstElementChild.innerHTML = r.status !== 200 ? `<span class="err">${esc(errText(r))}</span>`
       : (r.res.data.length ? `<table class="bids"><thead><tr><th>Koper</th><th class="num">Hoeveelheid</th><th class="num">Prijs</th><th>Opmerking</th><th>Geplaatst</th><th>Status</th></tr></thead><tbody>${r.res.data.map((x) => `<tr><td>${esc(x.buyer.company || x.buyer.id)}<div class="at-muted">${esc(x.buyer.contact || "")}</div></td><td class="num">${nl.format(x.quantity)}</td><td class="num">${eur.format(x.price.amount)}</td><td>${esc(x.note || "")}</td><td>${when(x.placedAt)}</td><td><span class="pill ${x.status === "awarded" ? "ok" : x.status === "rejected" ? "off" : "acc"}">${{ awarded: "gegund", rejected: "afgewezen", open: "open" }[x.status]}</span></td></tr>`).join("")}</tbody></table>`
         : `<span class="at-muted">Nog geen biedingen. Breng in de app als ander bedrijf een bod uit.</span>`)
         + (awards ? `<ul class="at-awards">${awards}</ul>` : "");
@@ -206,7 +216,7 @@ $("#l-body").addEventListener("click", async (e) => {
     row.querySelector("[data-cancel]").onclick = () => row.remove();
     row.querySelector("[data-go]").onclick = async () => {
       const r = await call("POST", `/lots/${encodeURIComponent(l.id)}/withdraw`, { reasonCode: row.querySelector(".at-reason").value, note: row.querySelector(".at-note").value.trim() || undefined });
-      if (r.status === 200) { toast("Partij ingetrokken."); loadLots(); } else row.querySelector(".at-werr").textContent = r.res?.error?.message || "Mislukt";
+      if (r.status === 200) { toast("Partij ingetrokken."); loadLots(); } else row.querySelector(".at-werr").textContent = errText(r);
     };
   }
 });
@@ -221,7 +231,7 @@ async function pollEvents(manual) {
     let more = true, got = 0, guard = 0;
     while (more && guard++ < 10) {
       const r = await call("GET", `/events?after=${T.after}&limit=100`);
-      if (r.status !== 200) { $("#e-state").textContent = "Ophalen mislukt: " + (r.res?.error?.message || r.status); break; }
+      if (r.status !== 200) { $("#e-state").textContent = "Ophalen mislukt: " + errText(r); break; }
       for (const ev of r.res.data) { if (!T.events.find((x) => x.id === ev.id)) T.events.unshift(ev); got++; }
       T.after = Number(r.res.next) || T.after; store.set("after." + T.me.key.prefix, T.after);
       more = r.res.hasMore;
@@ -321,7 +331,7 @@ $("#r-form").addEventListener("submit", async (e) => {
   $("#r-status").innerHTML = statusPill(r.status) + ` <span class="at-muted">${r.ms} ms${r.retryAfter ? " · Retry-After " + esc(r.retryAfter) + " s" : ""}</span>`;
   $("#r-res").textContent = pretty(r.res); $("#r-res").classList.remove("at-muted");
 });
-const curlOf = (method, path, body) => `curl -X ${method} "${BASE}${path}" \\\n  -H "Authorization: Bearer $FOODSOURCE_KEY"` + (body !== undefined && body !== "" ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '${(typeof body === "string" ? body : JSON.stringify(body)).replace(/'/g, "'\\''")}'` : "");
+const curlOf = (method, path, body) => `curl -X ${method} "${BASE}${path}" \\\n  -H "X-API-Key: $FOODSOURCE_KEY"` + (body !== undefined && body !== "" ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '${(typeof body === "string" ? body : JSON.stringify(body)).replace(/'/g, "'\\''")}'` : "");
 $("#r-curl").addEventListener("click", () => {
   let path = $("#r-path").value.trim(); if (!path.startsWith("/")) path = "/" + path;
   copy(curlOf($("#r-method").value, path, $("#r-body").value.trim() || undefined), "curl-opdracht gekopieerd (zet je sleutel in $FOODSOURCE_KEY).");
@@ -340,6 +350,6 @@ $("#g-list").addEventListener("click", (e) => { const b = e.target.closest("[dat
 $("#g-clear").addEventListener("click", () => { T.log = []; renderLog(); });
 
 // ---------- start ----------
-fetch("/api/status", { credentials: "omit" }).then((r) => r.json()).then((d) => { $("#env-test").hidden = d.settings?.environment !== "test"; if (d.settings && !d.settings.apiEnabled) $("#at-conn-err").textContent = "Let op: de API staat uit. De beheerder zet hem aan onder Website-instellingen → Koppelingen."; }).catch(() => {});
+fetch("/api/status", { credentials: "same-origin" }).then((r) => r.json()).then((d) => { $("#env-test").hidden = d.settings?.environment !== "test"; if (d.settings && !d.settings.apiEnabled) $("#at-conn-err").textContent = "Let op: de API staat uit. De beheerder zet hem aan onder Website-instellingen → Koppelingen."; }).catch(() => {});
 showTab(store.get("tab", "offer"));
 try { const k = sessionStorage.getItem("fs-tester.key"); if (k) { $("#at-key").value = k; $("#at-remember").checked = true; connect(k); } } catch {}

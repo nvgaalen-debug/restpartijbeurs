@@ -76,7 +76,7 @@ Gegevens blijven staan; ingelogde gebruikers blijven ingelogd.
 Elk ERP- of voorraadsysteem koppelt via dezelfde API op `/api/v1`. Zo werkt het:
 
 1. Beheerder: zet onder **Website-instellingen → Koppelingen** de API aan. Uitzetten blokkeert alle sleutels direct.
-2. Handelaar: maakt onder **Mijn account → API-koppelingen** een sleutel (`fs_live_…`, in de testomgeving `fs_test_…`) met alleen de rechten die nodig zijn: `lots:read`, `lots:write`, `bids:read`. De sleutel is één keer zichtbaar.
+2. Handelaar: maakt onder **Mijn account → API-koppelingen** een sleutel (`fs_live_…`, in de testomgeving `fs_test_…`; mee te sturen als header `X-API-Key`) met alleen de rechten die nodig zijn: `lots:read`, `lots:write`, `bids:read`. De sleutel is één keer zichtbaar.
 3. Optioneel: een webhookadres (https). FoodSource stuurt dan meteen `bid.received` (nieuw bod) en `lot.awarded` (gunning), ondertekend met `FoodSource-Signature: t=…,v1=HMAC-SHA256("t.body")`. Lukt het niet, dan opnieuw na 1, 5 en 15 minuten en 1, 3, 6, 12 en 24 uur.
 
 | Methode | Pad | Doel |
@@ -94,7 +94,7 @@ Voorbeeld:
 
 ```
 curl -X PUT https://<jouw-site>/api/v1/lots/by-external-id/BC-1001 \
-  -H "Authorization: Bearer fs_live_..." -H "Content-Type: application/json" \
+  -H "X-API-Key: fs_live_..." -H "Content-Type: application/json" \
   -d '{"product":"Elstar","category":"fruit","quantity":240,"unit":"case","price":{"amount":6.5,"currency":"EUR"},"availableUntil":"2026-11-15"}'
 ```
 

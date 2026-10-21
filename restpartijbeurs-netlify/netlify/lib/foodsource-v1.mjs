@@ -329,9 +329,12 @@ export function createV1(d) {
 
   // ---------- API-sleutel controleren ----------
   async function keyAuth(req) {
-    const h = req.headers.get("authorization") || "";
-    const m = h.match(/^Bearer (fs_(live|test)_[A-Za-z0-9_-]{32})$/);
-    if (!m) throw fail(401, "Missing or malformed API key. Send the header Authorization: Bearer fs_live_…");
+    // Sleutel via "Authorization: Bearer fs_…" of via "X-API-Key: fs_…" (voor omgevingen of proxy's
+    // die zelf iets met de Authorization-header doen)
+    const h = (req.headers.get("authorization") || "").trim();
+    const x = (req.headers.get("x-api-key") || "").trim();
+    const m = (x ? ("Bearer " + x) : h).match(/^Bearer (fs_(live|test)_[A-Za-z0-9_-]{32})$/);
+    if (!m) throw fail(401, "Missing or malformed API key. Send the header X-API-Key: fs_live_… (or Authorization: Bearer fs_live_…).");
     if (m[2] !== envKey()) throw fail(401, `This is the ${envKey() === "test" ? "test" : "production"} environment; use an fs_${envKey()}_ key.`);
     const r = await q(`SELECT k.id AS key_id, k.name AS key_name, k.prefix AS key_prefix, k.scopes AS key_scopes, u.*
       FROM rpb_api_keys k JOIN rpb_users u ON u.id = k.user_id WHERE k.key_hash = $1 AND k.revoked_at IS NULL`, [sha256(m[1])]);
