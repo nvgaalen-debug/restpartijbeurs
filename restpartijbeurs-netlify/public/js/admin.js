@@ -441,6 +441,9 @@ function applySettings(s) {
   forgotTexts();
   $("#site-name").textContent = s.siteName;
   if (typeof applyBrand === "function") applyBrand(s);
+  // Tekst naast de naam bovenaan: de welkomsttekst uit de instellingen, anders de standaardtekst
+  $("#site-tagline").textContent = (s.welcomeText || "").replace(/\s+/g, " ").trim() || "Aardappelen · groente · fruit";
+  $("#site-tagline").title = $("#site-tagline").textContent;
   const isTest = s.environment === "test";
   $("#env-test").hidden = !isTest;
   document.title = (isTest ? "[TEST] " : "") + s.siteName;
