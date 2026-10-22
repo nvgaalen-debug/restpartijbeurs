@@ -274,7 +274,7 @@ function checkOrigin(req) {
   let host = "";
   try { host = new URL(origin).host; } catch {}
   const allowed = new Set([new URL(req.url).host, req.headers.get("host") || ""]);
-  if (process.env.URL) try { allowed.add(new URL(process.env.URL).host); } catch {}
+  for (const u of [process.env.SITE_URL, process.env.URL]) if (u) try { allowed.add(new URL(u).host); } catch {}
   if (!allowed.has(host)) throw httpError(403, "Verzoek van een andere website geweigerd.");
 }
 
@@ -525,7 +525,7 @@ async function sendMail({ to, toName, subject, text, html }) {
   if (/[\r\n<>]/.test(to)) throw httpError(400, "Ongeldig e-mailadres.");
   const st = await getSettings(), siteName = st.siteName;
   // Logo bovenaan de HTML-mail (alleen als de site een vast adres heeft; mailprogramma's laden het van onze server)
-  const base = (process.env.URL || "").replace(/\/$/, "");
+  const base = publicUrl();
   if (html && st.logoVersion && /^https:\/\//.test(base)) {
     html = `<p style="margin:0 0 16px"><img src="${base}/api/brand/logo?v=${st.logoVersion}" alt="${escHtml(siteName)}" style="max-height:56px;max-width:240px;height:auto"></p>` + html;
   }
@@ -584,7 +584,10 @@ async function mollie(path, { method = "GET", body } = {}) {
   return data;
 }
 const centsToValue = (c) => (c / 100).toFixed(2);
-function siteUrl(req) { return (process.env.URL || new URL(req.url).origin).replace(/\/$/, ""); }
+// Adres van deze omgeving voor links in e-mails, Mollie en de API. SITE_URL gaat voor: Netlify geeft ook een
+// testomgeving (branch deploy) het adres van productie mee in URL, en dan zouden links naar de echte site wijzen.
+function publicUrl() { return String(process.env.SITE_URL || process.env.URL || "").trim().replace(/\/$/, ""); }
+function siteUrl(req) { return publicUrl() || new URL(req.url).origin.replace(/\/$/, ""); }
 
 // Haal de actuele status bij Mollie op en verwerk een geslaagde betaling (precies één keer).
 async function syncMollie(ref) {
@@ -989,7 +992,7 @@ function bidsView(me, bidderId, data) {
 }
 
 // ---------- FoodSource API v1 ----------
-const AI = createAi({ q, httpError, log });
+const AI = createAi({ q, httpError, log, today });
 const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES });
 
 // ---------- routes ----------
@@ -1326,6 +1329,13 @@ async function route(req, ctx = {}) {
     if (!(await getSettings()).aiEnabled) throw httpError(403, "AI-herkenning staat uit.");
     const body = await readBody(req);
     return json(200, await AI.suggestFromPhoto(me, str(body.photoId, 40)));
+  }
+  // AI: velden voorstellen op basis van een beschrijving (getypt, ingesproken, geplakt) en/of een eigen foto
+  if (a === "ai" && b === "lot" && !c && method === "POST") {
+    await requireTrade(me);
+    if (!(await getSettings()).aiEnabled) throw httpError(403, "AI-herkenning staat uit.");
+    const body = await readBody(req);
+    return json(200, await AI.suggest(me, { photoId: str(body.photoId, 40), text: typeof body.text === "string" ? body.text.slice(0, 5000) : "" }));
   }
 
   // Foto verwijderen: eigen foto, of elke foto als beheerder

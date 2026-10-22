@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
+<meta name="app-version" content="ed6ea90454">
 <title>Restpartijbeurs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/app.css?v=ed6ea90454">
 <link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
 <link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
 <link rel="manifest" href="/api/manifest.webmanifest">
@@ -401,59 +402,82 @@
     <div data-pane="settings" hidden>
       <div class="pane-head"><h2>Website-instellingen</h2></div>
       <form class="panel" id="form-settings" novalidate>
-        <div class="form">
-          <div class="field full"><label for="st-name">Naam van de website</label><input id="st-name" maxlength="60"><span class="hint">Bovenaan elke pagina en in het tabblad van de browser.</span></div>
-          <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Logo</span>
-            <div class="logo-card" id="logo-card">
-              <div class="logo-previews">
-                <div class="logo-prev-bar"><span class="sub">Kopregel</span><div class="logo-prev-head" id="logo-prev-head"><img id="logo-prev-img" alt="" hidden><b id="logo-prev-name"></b></div></div>
-                <div class="logo-prev-app"><span class="sub">App-icoon</span><img id="logo-prev-icon" alt="Voorbeeld van het app-icoon" width="72" height="72"></div>
+        <details class="st-sec" data-sec="algemeen">
+          <summary><span class="st-sec-title">Algemeen</span><span class="st-sec-sub">Naam, logo, welkomsttekst en mededeling</span></summary>
+          <div class="form">
+            <div class="field full"><label for="st-name">Naam van de website</label><input id="st-name" maxlength="60"><span class="hint">Bovenaan elke pagina en in het tabblad van de browser.</span></div>
+            <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Logo</span>
+              <div class="logo-card" id="logo-card">
+                <div class="logo-previews">
+                  <div class="logo-prev-bar"><span class="sub">Kopregel</span><div class="logo-prev-head" id="logo-prev-head"><img id="logo-prev-img" alt="" hidden><b id="logo-prev-name"></b></div></div>
+                  <div class="logo-prev-app"><span class="sub">App-icoon</span><img id="logo-prev-icon" alt="Voorbeeld van het app-icoon" width="72" height="72"></div>
+                </div>
+                <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+                  <label class="btn small" for="logo-file">Logo kiezen…</label><input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+                  <label class="btn small ghost" for="logo-icon-file">Apart app-icoon…</label><input id="logo-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+                  <label class="check" style="color:var(--ink)">Achtergrond icoon <input type="color" id="logo-bg" value="#ffffff"></label>
+                  <label class="check" style="color:var(--ink)"><input type="checkbox" id="logo-showname" checked> Naam naast het logo</label>
+                </div>
+                <div class="actions" style="justify-content:flex-start">
+                  <button class="btn small primary" type="button" id="logo-save" disabled>Logo opslaan</button>
+                  <button class="btn small ghost" type="button" id="logo-remove" hidden>Logo verwijderen</button>
+                  <span class="sub" id="logo-msg"></span>
+                </div>
+                <span class="hint">Verschijnt bovenaan elke pagina, in het tabblad van de browser, in e-mails en als icoon wanneer iemand de site op het beginscherm van zijn telefoon zet. PNG met doorzichtige achtergrond of SVG werkt het mooist. Staat de naam al in het logo, zet dan "Naam naast het logo" uit. Voor het app-icoon gebruikt de app het logo, of een apart (vierkant) beeldmerk als je dat kiest.</span>
               </div>
-              <div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
-                <label class="btn small" for="logo-file">Logo kiezen…</label><input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
-                <label class="btn small ghost" for="logo-icon-file">Apart app-icoon…</label><input id="logo-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
-                <label class="check" style="color:var(--ink)">Achtergrond icoon <input type="color" id="logo-bg" value="#ffffff"></label>
-                <label class="check" style="color:var(--ink)"><input type="checkbox" id="logo-showname" checked> Naam naast het logo</label>
-              </div>
-              <div class="actions" style="justify-content:flex-start">
-                <button class="btn small primary" type="button" id="logo-save" disabled>Logo opslaan</button>
-                <button class="btn small ghost" type="button" id="logo-remove" hidden>Logo verwijderen</button>
-                <span class="sub" id="logo-msg"></span>
-              </div>
-              <span class="hint">Verschijnt bovenaan elke pagina, in het tabblad van de browser, in e-mails en als icoon wanneer iemand de site op het beginscherm van zijn telefoon zet. PNG met doorzichtige achtergrond of SVG werkt het mooist. Staat de naam al in het logo, zet dan "Naam naast het logo" uit. Voor het app-icoon gebruikt de app het logo, of een apart (vierkant) beeldmerk als je dat kiest.</span>
             </div>
+            <div class="field full"><label for="st-welcome">Welkomsttekst op het inlogscherm</label><textarea id="st-welcome" rows="3" maxlength="1000" placeholder="bijv. Dé handelsplek voor restpartijen AGF in de regio."></textarea><span class="hint">Staat ook bovenaan elke pagina, naast de naam (houd het kort: een lange tekst wordt daar afgekapt). Leeg: "Aardappelen · groente · fruit".</span></div>
+            <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
           </div>
-          <div class="field full"><label for="st-welcome">Welkomsttekst op het inlogscherm</label><textarea id="st-welcome" rows="3" maxlength="1000" placeholder="bijv. Dé handelsplek voor restpartijen AGF in de regio."></textarea><span class="hint">Staat ook bovenaan elke pagina, naast de naam (houd het kort: een lange tekst wordt daar afgekapt). Leeg: "Aardappelen · groente · fruit".</span></div>
-          <div class="field full"><label for="st-ann">Mededeling voor alle ingelogde gebruikers</label><textarea id="st-ann" rows="2" maxlength="500" placeholder="Leeg laten voor geen mededeling"></textarea><span class="hint">Verschijnt als balk boven het aanbod.</span></div>
-          <div class="fieldset-title">Aanmelden en abonnement</div>
-          <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
-          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-require"> Geldig abonnement verplicht om aan te bieden en te bieden</label><span class="hint">Na de einddatum kan een handelaar alleen nog kijken, tot hij opnieuw betaalt. Beheerders en vrijgestelde gebruikers kunnen altijd handelen.</span></div>
-          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-auto"> Aanvraag automatisch goedkeuren zodra het abonnement online is betaald</label><span class="hint">Uit: je controleert elke aanvraag zelf, ook als er al betaald is.</span></div>
-          <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="text" inputmode="decimal" autocomplete="off" placeholder="bijv. 120,00"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
-          <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="text" inputmode="decimal" autocomplete="off" placeholder="21"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
-          <div class="fieldset-title">Online betalen via Mollie</div>
-          <div class="field full"><div class="ct-card" id="st-mollie"></div></div>
-          <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Betaalmethoden</span>
-            <div class="chips" style="margin-top:6px">
-              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="ideal"> iDEAL | Wero</label>
-              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="wero"> Wero</label>
-              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="bancontact"> Bancontact</label>
-              <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="creditcard"> Creditcard</label>
-            </div>
-            <span class="hint">Zet alleen methoden aan die ook in je Mollie-dashboard actief zijn. Niets aangevinkt: Mollie toont alles wat in je account aan staat. Wero is in Nederland vanaf oktober 2026 beschikbaar en staat bij Mollie nog in bèta.</span></div>
-          <div class="field full"><label for="st-subtext">Tekst bij het aanvraagformulier</label><input id="st-subtext" maxlength="300" placeholder="bijv. Abonnement € 120 per jaar excl. btw, factuur na goedkeuring."></div>
-          <div class="fieldset-title">Koppelingen (FoodSource API)</div>
-          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-api"> API voor koppelingen aan</label><span class="hint">Handelaren kunnen dan onder Mijn account → API-koppelingen sleutels maken, zodat hun ERP zelf partijen aanmeldt en gunningen ophaalt. Uitzetten blokkeert alle sleutels direct.</span></div>
-          <div class="fieldset-title">AI: invullen op basis van een foto</div>
-          <div class="field full"><div class="ct-card" id="st-ai-card"></div></div>
-          <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-ai"> Velden van een partij laten voorstellen op basis van de eerste foto</label><span class="hint">De foto gaat naar Claude (Anthropic) om product, categorie, verpakking en meer te herkennen. De aanbieder controleert altijd zelf. Anthropic gebruikt API-gegevens niet om modellen te trainen.</span></div>
-          <div class="fieldset-title">E-mail</div>
-          <div class="field full"><div class="ct-card" id="st-mail"></div></div>
-          <div class="field full" id="st-testmail-row" hidden><label for="st-testmail">Testmail sturen naar</label>
-            <div class="actions" style="justify-content:flex-start"><input id="st-testmail" type="email" placeholder="naam@bedrijf.nl" style="flex:1 1 240px"><button class="btn small" type="button" id="st-testmail-btn">Testmail sturen</button></div>
-            <span class="hint" id="st-testmail-res"></span></div>
-        </div>
-        <div class="dlg-foot"><span class="err" id="st-err"></span><button class="btn primary" type="submit">Opslaan</button></div>
+        </details>
+        <details class="st-sec" data-sec="abo">
+          <summary><span class="st-sec-title">Aanmelden en abonnement</span><span class="st-sec-sub">Aanvragen, abonnementsprijs en btw</span></summary>
+          <div class="form">
+            <div class="field full"><label class="check" style="color:var(--ink)"><input type="checkbox" id="st-reg"> Nieuwe bedrijven kunnen een account aanvragen</label></div>
+            <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-require"> Geldig abonnement verplicht om aan te bieden en te bieden</label><span class="hint">Na de einddatum kan een handelaar alleen nog kijken, tot hij opnieuw betaalt. Beheerders en vrijgestelde gebruikers kunnen altijd handelen.</span></div>
+            <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-auto"> Aanvraag automatisch goedkeuren zodra het abonnement online is betaald</label><span class="hint">Uit: je controleert elke aanvraag zelf, ook als er al betaald is.</span></div>
+            <div class="field"><label for="st-price">Abonnementsprijs per jaar (€, excl. btw)</label><input id="st-price" type="text" inputmode="decimal" autocomplete="off" placeholder="bijv. 120,00"><span class="hint">Standaardbedrag bij het registreren van een betaling.</span></div>
+            <div class="field"><label for="st-vat">Btw-percentage</label><input id="st-vat" type="text" inputmode="decimal" autocomplete="off" placeholder="21"><span class="hint">Bij online betalen rekent de handelaar de prijs inclusief btw af.</span></div>
+          </div>
+        </details>
+        <details class="st-sec" data-sec="mollie">
+          <summary><span class="st-sec-title">Online betalen via Mollie</span><span class="st-sec-sub">Koppeling en betaalmethoden</span></summary>
+          <div class="form">
+            <div class="field full"><div class="ct-card" id="st-mollie"></div></div>
+            <div class="field full"><span class="field-label" style="font-size:13px;font-weight:600">Betaalmethoden</span>
+              <div class="chips" style="margin-top:6px">
+                <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="ideal"> iDEAL | Wero</label>
+                <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="wero"> Wero</label>
+                <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="bancontact"> Bancontact</label>
+                <label class="check" style="color:var(--ink)"><input type="checkbox" name="st-pm" value="creditcard"> Creditcard</label>
+              </div>
+              <span class="hint">Zet alleen methoden aan die ook in je Mollie-dashboard actief zijn. Niets aangevinkt: Mollie toont alles wat in je account aan staat. Wero is in Nederland vanaf oktober 2026 beschikbaar en staat bij Mollie nog in bèta.</span></div>
+            <div class="field full"><label for="st-subtext">Tekst bij het aanvraagformulier</label><input id="st-subtext" maxlength="300" placeholder="bijv. Abonnement € 120 per jaar excl. btw, factuur na goedkeuring."></div>
+          </div>
+        </details>
+        <details class="st-sec" data-sec="api">
+          <summary><span class="st-sec-title">Koppelingen (FoodSource API)</span><span class="st-sec-sub">API-sleutels voor ERP-koppelingen</span></summary>
+          <div class="form">
+            <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-api"> API voor koppelingen aan</label><span class="hint">Handelaren kunnen dan onder Mijn account → API-koppelingen sleutels maken, zodat hun ERP zelf partijen aanmeldt en gunningen ophaalt. Uitzetten blokkeert alle sleutels direct.</span></div>
+          </div>
+        </details>
+        <details class="st-sec" data-sec="ai">
+          <summary><span class="st-sec-title">AI: invullen op basis van een foto</span><span class="st-sec-sub">Velden laten voorstellen door Claude</span></summary>
+          <div class="form">
+            <div class="field full"><div class="ct-card" id="st-ai-card"></div></div>
+            <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-ai"> Velden van een partij laten voorstellen op basis van de eerste foto</label><span class="hint">De foto gaat naar Claude (Anthropic) om product, categorie, verpakking en meer te herkennen. De aanbieder controleert altijd zelf. Anthropic gebruikt API-gegevens niet om modellen te trainen.</span></div>
+          </div>
+        </details>
+        <details class="st-sec" data-sec="mail">
+          <summary><span class="st-sec-title">E-mail</span><span class="st-sec-sub">Mailkoppeling en testmail</span></summary>
+          <div class="form">
+            <div class="field full"><div class="ct-card" id="st-mail"></div></div>
+            <div class="field full" id="st-testmail-row" hidden><label for="st-testmail">Testmail sturen naar</label>
+              <div class="actions" style="justify-content:flex-start"><input id="st-testmail" type="email" placeholder="naam@bedrijf.nl" style="flex:1 1 240px"><button class="btn small" type="button" id="st-testmail-btn">Testmail sturen</button></div>
+              <span class="hint" id="st-testmail-res"></span></div>
+          </div>
+        </details>
+        <div class="dlg-foot st-foot"><button class="btn small ghost" type="button" id="st-toggle-all">Alles uitklappen</button><span class="err" id="st-err"></span><button class="btn primary" type="submit">Opslaan</button></div>
       </form>
       <div class="panel danger-zone" id="wipe-panel" hidden>
         <div class="panel-head"><div><h3>Omgeving leegmaken</h3><div class="meta">Voor de testomgeving: begin opnieuw met een schone, lege app. Dit kan niet ongedaan worden gemaakt.</div></div></div>
@@ -480,9 +504,19 @@
     <div class="form">
       <div class="field full ai-strip" id="ai-strip" hidden>
         <div class="ai-strip-row">
-          <svg class="ai-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-          <div class="ai-strip-text"><b id="ai-title">Begin met een foto</b><span class="hint" id="ai-hint">De app herkent product, categorie, verpakking en meer, en vult die alvast in. Jij controleert alles en vult hoeveelheid, prijs en datum zelf in.</span></div>
-          <button class="btn primary small" type="button" id="ai-btn">Foto maken</button>
+          <svg class="ai-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="currentColor"/></svg>
+          <div class="ai-strip-text"><b id="ai-title">Snel invullen met AI</b><span class="hint" id="ai-hint">Maak een foto, spreek in of typ wat je aanbiedt. De app vult de velden alvast in; jij controleert alles.</span></div>
+        </div>
+        <div class="ai-sources">
+          <button class="ai-src" type="button" id="ai-cam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><span id="ai-cam-label">Foto maken</span></button>
+          <button class="ai-src" type="button" id="ai-mic" hidden aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg><span id="ai-mic-label">Inspreken</span></button>
+        </div>
+        <div class="ai-text-row">
+          <label class="sr-only" for="ai-text">Beschrijf de partij</label>
+          <textarea id="ai-text" rows="2" maxlength="1500" enterkeyhint="done" placeholder="Typ, spreek in of plak een bericht, bijv.: 200 dozen trostomaten klasse 1, 6 kilo per doos, 4 euro per doos, tot vrijdag, ophalen Barendrecht"></textarea>
+          <div class="ai-text-actions">
+            <button class="btn primary" type="button" id="ai-btn">Vul in met AI</button>
+          </div>
         </div>
         <div class="ai-status" id="ai-status" role="status" aria-live="polite" hidden></div>
         <input id="f-photo-cam" type="file" accept="image/*" capture="environment" hidden>
@@ -680,15 +714,16 @@
 <datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
 <datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
 
-<script src="/js/core.js"></script>
-<script src="/js/market.js"></script>
-<script src="/js/ai.js"></script>
-<script src="/js/account.js"></script>
-<script src="/js/admin.js"></script>
-<script src="/js/payments.js"></script>
-<script src="/js/stats.js"></script>
-<script src="/js/integrations.js"></script>
-<script src="/js/brand.js"></script>
-<script src="/js/start.js"></script>
+<script src="/js/core.js?v=ed6ea90454"></script>
+<script src="/js/update.js?v=ed6ea90454"></script>
+<script src="/js/market.js?v=ed6ea90454"></script>
+<script src="/js/ai.js?v=ed6ea90454"></script>
+<script src="/js/account.js?v=ed6ea90454"></script>
+<script src="/js/admin.js?v=ed6ea90454"></script>
+<script src="/js/payments.js?v=ed6ea90454"></script>
+<script src="/js/stats.js?v=ed6ea90454"></script>
+<script src="/js/integrations.js?v=ed6ea90454"></script>
+<script src="/js/brand.js?v=ed6ea90454"></script>
+<script src="/js/start.js?v=ed6ea90454"></script>
 </body>
 </html>

@@ -71,7 +71,7 @@ function myLotsDoc() { return S.lotsDocs.get(S.me) || null; }
 
 // ---------- writes ----------
 let chain = Promise.resolve();
-function queue(fn) { const p = chain.then(fn); chain = p.catch(() => {}); return p; }
+function queue(fn) { S.pendingSaves = (S.pendingSaves || 0) + 1; const p = chain.then(fn).finally(() => { S.pendingSaves--; }); chain = p.catch(() => {}); return p; }
 // Schrijft het eigen document. De server controleert alles en geeft de opgeslagen versie terug.
 // Heeft iemand (of een ander tabblad) het intussen gewijzigd, dan halen we de nieuwe versie op
 // en passen we de wijziging daar opnieuw op toe.

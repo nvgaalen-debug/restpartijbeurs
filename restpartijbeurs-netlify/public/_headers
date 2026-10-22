@@ -10,7 +10,7 @@
   Referrer-Policy: same-origin
   Cross-Origin-Opener-Policy: same-origin
   X-Permitted-Cross-Domain-Policies: none
-  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()
+  Permissions-Policy: geolocation=(), microphone=(self), camera=(), payment=(), usb=(), interest-cohort=()
 
 # Opmaak en scripts: altijd controleren of er een nieuwe versie is, zodat nooit een oude
 # en een nieuwe versie door elkaar gebruikt worden na een update
@@ -18,3 +18,13 @@
   Cache-Control: public, max-age=0, must-revalidate
 /app.css
   Cache-Control: public, max-age=0, must-revalidate
+
+# HTML en versie-bestand nooit uit een oude kopie halen: zo zien telefoons een update direct
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/api-tester.html
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-store

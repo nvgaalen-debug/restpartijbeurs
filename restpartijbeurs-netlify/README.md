@@ -21,6 +21,7 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/openapi.yaml` | Technische beschrijving van de API (OpenAPI 3.1) |
 | `public/js/ai.js` | Partij aanbieden: velden laten invullen op basis van een foto |
 | `public/js/brand.js` | Eigen logo: kopregel, tabblad-icoon, app-icoon; instellen onder Beheer |
+| `public/js/update.js` | Laadt na een update vanzelf de nieuwe versie (kijkt in `public/version.json`) |
 | `public/icons/` | Standaard app-iconen zolang er geen eigen logo is |
 | `netlify/lib/ai-photo.mjs` | Serverkant van de foto-herkenning (Claude via de Anthropic API) |
 | `public/js/start.js` | Start de app (wordt als laatste geladen) |
@@ -51,6 +52,7 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `MOLLIE_API_KEY` | Optioneel. De API-sleutel uit je Mollie-dashboard (`test_...` om te testen, `live_...` voor echte betalingen). Markeer als secret. Zonder deze sleutel registreert de beheerder betalingen handmatig. |
 | `APP_ENV` | Alleen in de testomgeving: `test`. Toont een oranje balk "TESTOMGEVING". |
 | `PG_MIGRATE_FROM` | Eenmalig, alleen bij Production: `public`. Verplaatst de bestaande Restpartijbeurs-tabellen naar het schema van `PG_SCHEMA`. Na één keer openen van de app weer weghalen. Werkt nooit in de testomgeving. |
+| `SITE_URL` | Alleen in de testomgeving: het eigen adres, bijv. `https://test--restpartijbeurs.netlify.app`. Zonder deze waarde wijzen links in e-mails en de terugkoppeling van Mollie naar productie (Netlify geeft een branch deploy het adres van productie mee). |
 | `PG_SCHEMA` | Alleen in de testomgeving, bijv. `rpb_test`. De app gebruikt dan een eigen schema in dezelfde database, gescheiden van de echte gegevens en van Vloeren Kassa. |
 | `ALLOW_WIPE` | Alleen tijdelijk: `true` zet "Omgeving leegmaken" (Beheer → Website-instellingen) aan buiten de testomgeving. Haal hem daarna weer weg. In de testomgeving (`APP_ENV=test`) staat leegmaken altijd aan. |
 | `GMAIL_USER` | Optioneel. Je Gmail-adres; de app verstuurt daarmee mails bij "Code vergeten?". |
@@ -67,6 +69,12 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 3. Ga naar **Beheer** en maak voor elke handelaar een account aan. Geef de naam en code persoonlijk door.
 
 Na de eerste beheerder werkt `RPB_SETUP_CODE` niet meer; je mag hem laten staan of verwijderen.
+
+## Test- en productieomgeving
+
+Eén Netlify-project, twee branches in GitHub: `main` is productie, `test` is de testomgeving (branch deploy op `https://test--<project>.netlify.app`). Zet in Netlify bij de omgevingsvariabelen voor de context **Branch deploys** (of alleen branch `test`): `APP_ENV=test`, `PG_SCHEMA=rpb_test`, `SITE_URL=https://test--<project>.netlify.app` en eventueel een `test_`-sleutel van Mollie. De testomgeving gebruikt dan dezelfde database maar een eigen schema, toont een oranje balk, geeft `fs_test_`-sleutels en mag altijd worden leeggemaakt. Werkwijze: nieuwe versie eerst op `test` zetten en controleren, daarna `test` samenvoegen in `main`.
+
+Let op: geplande functies (zoals het opnieuw proberen van webhooks elke 5 minuten) draait Netlify alleen voor productie. In de testomgeving gaan webhooks direct de deur uit, maar mislukte pogingen worden daar niet automatisch herhaald (wel met de knop "Mislukte berichten opnieuw sturen" in Mijn account → API-koppelingen).
 
 ## Een update doorvoeren
 
@@ -85,6 +93,8 @@ Aanzetten:
 3. Zet als beheerder onder **Website-instellingen → AI** het vinkje aan.
 
 Grenzen: maximaal 60 foto's per uur per gebruiker en 1000 per dag voor de hele site; na 9 seconden zonder antwoord stopt de herkenning (Netlify-limiet). Elk voorstel staat in het logboek, met model en verbruik.
+
+**Beschrijven in plaats van (of naast) een foto.** In de strook bovenaan "Partij aanbieden" kan de aanbieder de partij typen, inspreken (knop *Inspreken*, of de microfoon van het toetsenbord) of een bericht plakken uit WhatsApp of mail, bijvoorbeeld "200 dozen trostomaten klasse 1, 6 kilo per doos, 4 euro per doos, tot vrijdag, ophalen Barendrecht". Claude vult dan ook hoeveelheid, minimale afname, prijs (per eenheid, excl. btw), beschikbaar-tot-datum en afhaallocatie in; uit alleen een foto nooit. Met foto en beschrijving samen gaat de beschrijving voor. Endpoint: `POST /api/ai/lot` met `{ text, photoId }` (minstens één van beide; tekst maximaal 1500 tekens). Zelf ingevulde velden worden nooit overschreven. Inspreken gebruikt de spraakherkenning van de browser (Safari: Apple, Chrome: Google); de tekst gaat daarna, net als getypte tekst, naar Claude. Daarvoor staat `microphone=(self)` in `_headers`.
 
 ## Eigen logo
 

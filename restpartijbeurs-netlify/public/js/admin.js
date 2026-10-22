@@ -498,3 +498,26 @@ async function handleRequestReturn() {
 }
 
 async function loadSettings() { try { applySettings((await api("status")).settings); } catch {} }
+
+// Website-instellingen: elk onderdeel klapt uit; welke onderdelen open staan, onthoudt de browser
+function revealField(sel) { const el = $(sel); const d = el?.closest("details"); if (d) d.open = true; el?.focus(); }
+(() => {
+  const KEY = "rpb.settingsOpen";
+  let open = [];
+  try { open = JSON.parse(localStorage.getItem(KEY) || "null") || ["algemeen"]; } catch { open = ["algemeen"]; }
+  const secs = $$("#form-settings details.st-sec");
+  secs.forEach((d) => {
+    d.open = open.includes(d.dataset.sec);
+    d.addEventListener("toggle", () => {
+      try { localStorage.setItem(KEY, JSON.stringify(secs.filter((x) => x.open).map((x) => x.dataset.sec))); } catch {}
+    });
+  });
+  const btnAll = $("#st-toggle-all");
+  if (btnAll && secs.every((d) => d.open)) btnAll.textContent = "Alles inklappen";
+  secs.forEach((d) => d.addEventListener("toggle", () => { if (btnAll) btnAll.textContent = secs.every((x) => x.open) ? "Alles inklappen" : "Alles uitklappen"; }));
+  $("#st-toggle-all")?.addEventListener("click", () => {
+    const anyClosed = secs.some((d) => !d.open);
+    secs.forEach((d) => { d.open = anyClosed; });
+    $("#st-toggle-all").textContent = anyClosed ? "Alles inklappen" : "Alles uitklappen";
+  });
+})();

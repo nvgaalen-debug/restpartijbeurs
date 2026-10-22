@@ -210,6 +210,7 @@ function setView(v) {
   $("#view-bids").hidden = v !== "bids";
   $("#view-admin").hidden = v !== "admin";
   $("#view-login").hidden = true;
+  document.body.dataset.view = v; // telefoon: knop "Partij aanbieden" niet over Beheer heen
   if (v === "admin") setAdminPane(S.apane || "dash");
   try { localStorage.setItem("rpb.view", v); } catch {}
 }

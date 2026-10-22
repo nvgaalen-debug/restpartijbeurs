@@ -126,8 +126,8 @@ $("#form-settings").addEventListener("submit", async (e) => {
   const priceCents = parseEuroCents($("#st-price").value);
   const vatRaw = String($("#st-vat").value).replace(",", ".").replace("%", "").trim();
   const vat = vatRaw === "" ? NaN : Number(vatRaw);
-  if (priceCents === null || priceCents > 10000000) { $("#st-err").textContent = "Vul een geldige abonnementsprijs in, bijvoorbeeld 120 of 120,50. Gratis? Vul dan 0 in."; $("#st-price").focus(); return; }
-  if (!Number.isFinite(vat) || vat < 0 || vat > 100) { $("#st-err").textContent = "Vul een btw-percentage in tussen 0 en 100, bijvoorbeeld 21."; $("#st-vat").focus(); return; }
+  if (priceCents === null || priceCents > 10000000) { $("#st-err").textContent = "Vul een geldige abonnementsprijs in, bijvoorbeeld 120 of 120,50. Gratis? Vul dan 0 in."; revealField("#st-price"); return; }
+  if (!Number.isFinite(vat) || vat < 0 || vat > 100) { $("#st-err").textContent = "Vul een btw-percentage in tussen 0 en 100, bijvoorbeeld 21."; revealField("#st-vat"); return; }
   try {
     const d = await api("admin/settings", { method: "PUT", body: {
       siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
