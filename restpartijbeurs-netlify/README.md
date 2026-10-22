@@ -22,6 +22,7 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/js/ai.js` | Partij aanbieden: velden laten invullen op basis van een foto |
 | `public/js/brand.js` | Eigen logo: kopregel, tabblad-icoon, app-icoon; instellen onder Beheer |
 | `public/js/update.js` | Laadt na een update vanzelf de nieuwe versie (kijkt in `public/version.json`) |
+| `tests/` | Rooktest na elke release (Playwright); uitleg in `tests/README.md`. GitHub-workflow: `rooktest.yml` (hoort in `.github/workflows/`) |
 | `public/icons/` | Standaard app-iconen zolang er geen eigen logo is |
 | `netlify/lib/ai-photo.mjs` | Serverkant van de foto-herkenning (Claude via de Anthropic API) |
 | `public/js/start.js` | Start de app (wordt als laatste geladen) |

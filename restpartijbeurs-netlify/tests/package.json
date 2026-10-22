@@ -1,0 +1,12 @@
+{
+  "name": "foodsource-rooktest",
+  "private": true,
+  "type": "module",
+  "description": "Automatische controle na elke release (Playwright). Zie README in deze map.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.0"
+  }
+}
