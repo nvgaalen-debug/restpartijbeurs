@@ -29,6 +29,16 @@ test.beforeAll(async ({ request }) => {
   const d = await r.json();
   SETTINGS = d.settings || {}; ENV = SETTINGS.environment || "prod";
   console.log(`Omgeving: ${ENV} · ${BASE} · site "${SETTINGS.siteName}"`);
+  // In GitHub weet de workflow welke omgeving hij bedoelt; klopt dat niet, dan is groen misleidend → rood
+  const want = (process.env.SMOKE_EXPECT_ENV || "").toLowerCase();
+  if (want) {
+    expect(ENV, want === "test"
+      ? `${BASE} meldt zich als productie. Zet in Netlify bij dit project APP_ENV=test en doe een nieuwe deploy (of controleer SMOKE_URL_TEST).`
+      : `${BASE} meldt zich als testomgeving, maar productie werd verwacht (controleer SMOKE_URL_PROD).`).toBe(want);
+    const need = want === "test" ? ["TEST_BUYER", "TEST_BUYER_CODE", "TEST_SELLER", "TEST_SELLER_CODE"] : ["PROD_BUYER", "PROD_BUYER_CODE"];
+    const missing = need.filter((k) => !process.env[k]);
+    expect(missing, `Deze secrets ontbreken in GitHub (Settings → Secrets and variables → Actions): ${missing.join(", ")}`).toEqual([]);
+  }
 });
 
 // Elke pagina: JavaScript-fouten verzamelen; aan het eind van de test mogen er geen zijn
@@ -38,9 +48,15 @@ function watch(page) {
   return errors;
 }
 async function login(page, { name, code }) {
-  await page.goto("/");
-  await page.fill("#l-name", name);
-  await page.fill("#l-code", code);
+  // Wachten tot de app klaar is met opstarten (die bouwt het inlogscherm na het laden nog op en wist dan de velden)
+  await page.goto("/", { waitUntil: "networkidle" });
+  await expect(page.locator("#form-login")).toBeVisible();
+  for (let i = 0; i < 3; i++) {
+    await page.fill("#l-name", name);
+    await page.fill("#l-code", code);
+    await page.waitForTimeout(200);
+    if ((await page.inputValue("#l-name")) === name && (await page.inputValue("#l-code")) === code) break;
+  }
   await page.click("#form-login button[type=submit]");
   // Ingelogd (kopregel met naam) of de vraag om eerst een eigen code te kiezen; wat het eerst verschijnt
   const done = page.locator("#user-box:not([hidden]), #dlg-forcecode[open], #login-err:not(:empty)").first();
