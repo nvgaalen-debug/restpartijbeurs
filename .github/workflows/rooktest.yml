@@ -51,6 +51,7 @@ jobs:
       TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
       PROD_API_KEY: ${{ secrets.PROD_API_KEY }}
       SMOKE_AI: ${{ inputs.ai && '1' || '0' }}
+      SMOKE_EXPECT_ENV: ${{ (github.event_name == 'schedule' || inputs.omgeving == 'productie') && 'prod' || 'test' }}
       CI: "1"
     steps:
       - uses: actions/checkout@v4
