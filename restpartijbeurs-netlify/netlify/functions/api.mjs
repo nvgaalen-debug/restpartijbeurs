@@ -869,7 +869,8 @@ async function normalizeLots(me, prev, data) {
     // Foto's: alleen eigen foto's, maximaal 3
     const photos = Array.isArray(it0.photos) ? it0.photos.filter((x) => typeof x === "string").slice(0, 3) : [];
     for (const ph of photos) if (!ownPhotos.has(ph) && !(was?.photos || []).includes(ph)) throw httpError(403, "Je kunt alleen je eigen foto's gebruiken.");
-    it.photos = photos;
+    // Een foto die al bij de partij hoorde maar niet meer bestaat: verwijzing opruimen (geen kapotte plaatjes)
+    it.photos = photos.filter((ph) => ownPhotos.has(ph));
     it.createdAt = was?.createdAt || nowIso;
     it.updatedAt = isoOr(it0.updatedAt, nowIso);
 

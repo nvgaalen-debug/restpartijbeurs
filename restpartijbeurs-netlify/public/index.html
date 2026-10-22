@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="app-version" content="ed6ea90454">
+<meta name="app-version" content="3cc6053733">
 <title>Restpartijbeurs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css?v=ed6ea90454">
+<link rel="stylesheet" href="/app.css?v=3cc6053733">
 <link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
 <link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
 <link rel="manifest" href="/api/manifest.webmanifest">
@@ -251,7 +251,7 @@
         <option value="price">Laagste prijs eerst</option>
         <option value="value">Grootste partij eerst</option>
       </select>
-      <label class="check"><input type="checkbox" id="show-closed"> Ook afgesloten partijen</label>
+      <label class="check show-closed"><input type="checkbox" id="show-closed"> Ook afgesloten partijen</label>
     </div>
     <div id="market"></div>
   </section>
@@ -581,11 +581,17 @@
   <div class="dlg-foot"><span class="hint" id="ct-hint"></span><button class="btn" type="button" data-close>Sluiten</button></div>
 </dialog>
 
+<dialog id="dlg-lotdetail" class="sheet detail">
+  <div class="dlg-head ld-head"><h2 id="ld-title" tabindex="-1" autofocus>Partij</h2><button class="btn small" type="button" data-close>Sluiten</button></div>
+  <div class="ld-body" id="ld-body"></div>
+</dialog>
+
 <dialog id="dlg-photo" class="lightbox">
   <div class="lb-top"><span id="lb-title"></span><button class="btn small" type="button" data-close>Sluiten</button></div>
   <div class="lb-stage">
     <button class="lb-nav" type="button" id="lb-prev" aria-label="Vorige foto">‹</button>
     <img id="lb-img" alt="">
+    <p class="lb-missing" id="lb-missing" hidden>Deze foto is niet meer beschikbaar.<br><span>De aanbieder kan hem opnieuw toevoegen via Mijn partijen → Bewerken.</span></p>
     <button class="lb-nav" type="button" id="lb-next" aria-label="Volgende foto">›</button>
   </div>
   <div class="lb-count" id="lb-count"></div>
@@ -714,16 +720,16 @@
 <datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
 <datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
 
-<script src="/js/core.js?v=ed6ea90454"></script>
-<script src="/js/update.js?v=ed6ea90454"></script>
-<script src="/js/market.js?v=ed6ea90454"></script>
-<script src="/js/ai.js?v=ed6ea90454"></script>
-<script src="/js/account.js?v=ed6ea90454"></script>
-<script src="/js/admin.js?v=ed6ea90454"></script>
-<script src="/js/payments.js?v=ed6ea90454"></script>
-<script src="/js/stats.js?v=ed6ea90454"></script>
-<script src="/js/integrations.js?v=ed6ea90454"></script>
-<script src="/js/brand.js?v=ed6ea90454"></script>
-<script src="/js/start.js?v=ed6ea90454"></script>
+<script src="/js/core.js?v=3cc6053733"></script>
+<script src="/js/update.js?v=3cc6053733"></script>
+<script src="/js/market.js?v=3cc6053733"></script>
+<script src="/js/ai.js?v=3cc6053733"></script>
+<script src="/js/account.js?v=3cc6053733"></script>
+<script src="/js/admin.js?v=3cc6053733"></script>
+<script src="/js/payments.js?v=3cc6053733"></script>
+<script src="/js/stats.js?v=3cc6053733"></script>
+<script src="/js/integrations.js?v=3cc6053733"></script>
+<script src="/js/brand.js?v=3cc6053733"></script>
+<script src="/js/start.js?v=3cc6053733"></script>
 </body>
 </html>

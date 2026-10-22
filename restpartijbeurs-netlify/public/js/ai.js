@@ -12,7 +12,7 @@ const AI_LABEL = {
   product: "product", ras: "ras", category: "categorie", klasse: "klasse", origin: "herkomst", unit: "eenheid", kgPerUnit: "kg per eenheid",
   pack: "verpakking", note: "toelichting", qty: "hoeveelheid", minQty: "minimale afname", price: "prijs", until: "datum", location: "afhaallocatie",
 };
-const AIS = { touched: new Set(), busy: false, autoDone: false, rec: null, listening: false };
+const AIS = { touched: new Set(), busy: false, autoDone: false, rec: null, listening: false, micTimer: 0 };
 
 const aiOn = () => !!(S.settings && S.settings.aiEnabled);
 function aiStatus(html, kind) {
@@ -61,37 +61,56 @@ $("#f-photo-cam").addEventListener("change", (e) => { const f = e.target.files; 
 
 // ---------- inspreken (spraakherkenning van de browser; anders de microfoon op het toetsenbord) ----------
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+// iPhone/iPad (ook Chrome daar, dat is ook Safari-techniek): de doorlopende modus negeert daar soms "stop" en
+// blijft tekst sturen. Daar luisteren we per zin (stopt vanzelf na een korte stilte) en nooit langer dan 60 s.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 if (SpeechRec) $("#ai-mic").hidden = false;
+function micUi(on) {
+  $("#ai-mic").setAttribute("aria-pressed", String(on)); $("#ai-mic-label").textContent = on ? "Stop" : "Inspreken";
+}
+// Stoppen werkt altijd direct: de knop gaat meteen terug en latere berichten van de oude herkenning worden genegeerd
 function stopListening() {
-  if (AIS.rec) { try { AIS.rec.stop(); } catch {} }
-  AIS.listening = false; $("#ai-mic").setAttribute("aria-pressed", "false"); $("#ai-mic-label").textContent = "Inspreken";
+  const rec = AIS.rec;
+  AIS.rec = null; AIS.listening = false; clearTimeout(AIS.micTimer);
+  micUi(false);
+  if (rec) {
+    try { rec.stop(); } catch {}
+    setTimeout(() => { try { rec.abort(); } catch {} }, 700); // als stop() genegeerd wordt
+  }
 }
 $("#ai-mic").addEventListener("click", () => {
-  if (AIS.listening) { stopListening(); return; }
-  const rec = new SpeechRec();
-  rec.lang = "nl-NL"; rec.interimResults = true; rec.continuous = true;
+  if (AIS.listening) { stopListening(); aiStatus(""); aiRefresh(); return; }
+  let rec;
+  try { rec = new SpeechRec(); } catch { aiStatus("Inspreken lukte niet. Tik in het tekstvak op de microfoon van je toetsenbord.", "warn"); return; }
+  rec.lang = "nl-NL"; rec.interimResults = true; rec.continuous = !IOS; rec.maxAlternatives = 1;
   const ta = $("#ai-text"), start = ta.value.trim() ? ta.value.trim() + " " : "";
-  let finalText = "";
+  const mine = () => AIS.rec === rec;
   rec.onresult = (ev) => {
-    let interim = "";
-    for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      const t = ev.results[i][0].transcript;
-      if (ev.results[i].isFinal) finalText += t + " "; else interim += t;
-    }
-    ta.value = (start + finalText + interim).slice(0, 1500); aiRefresh();
+    if (!mine()) return;
+    // Steeds de hele tekst opnieuw opbouwen: op de iPhone komen resultaten soms dubbel binnen
+    let text = "";
+    for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? " " : "");
+    ta.value = (start + text.replace(/\s+/g, " ").trim()).slice(0, 1500); aiRefresh();
   };
   rec.onerror = (ev) => {
+    if (!mine()) return;
     const msg = ev.error === "not-allowed" || ev.error === "service-not-allowed"
-      ? "De microfoon mag niet gebruikt worden. Sta de microfoon toe in de instellingen van je browser, of tik in het tekstvak op de microfoon van je toetsenbord."
-      : ev.error === "no-speech" ? "Ik hoorde niets. Probeer het nog eens, of typ de beschrijving." : "Inspreken lukte niet. Typ de beschrijving, of gebruik de microfoon van je toetsenbord.";
-    aiStatus(esc(msg), "warn"); stopListening();
+      ? "De microfoon mag niet gebruikt worden. Sta de microfoon toe (iPhone: Instellingen → Apps → Safari → Microfoon), of tik in het tekstvak op de microfoon van je toetsenbord."
+      : ev.error === "no-speech" ? "Ik hoorde niets. Probeer het nog eens, of typ de beschrijving."
+      : ev.error === "aborted" ? "" : "Inspreken lukte niet. Typ de beschrijving, of tik in het tekstvak op de microfoon van je toetsenbord.";
+    stopListening(); aiStatus(msg ? esc(msg) : "", "warn"); aiRefresh();
   };
-  rec.onend = () => { if (AIS.listening) stopListening(); aiRefresh(); };
+  rec.onend = () => {
+    if (!mine()) return;
+    stopListening(); aiRefresh();
+    aiStatus(ta.value.trim() ? "Klaar. Controleer de tekst en tik op <b>Vul in met AI</b>, of tik nog eens op Inspreken om iets toe te voegen." : "");
+  };
   try {
-    rec.start(); AIS.rec = rec; AIS.listening = true;
-    $("#ai-mic").setAttribute("aria-pressed", "true"); $("#ai-mic-label").textContent = "Stop";
-    aiStatus("Spreek de partij in, bijvoorbeeld: <i>“tweehonderd dozen trostomaten, vier euro per doos, tot vrijdag, ophalen in Barendrecht”</i>. Tik op Stop als je klaar bent.");
-  } catch { aiStatus("Inspreken lukte niet. Typ de beschrijving.", "warn"); }
+    rec.start(); AIS.rec = rec; AIS.listening = true; micUi(true);
+    AIS.micTimer = setTimeout(() => { if (mine()) { stopListening(); aiRefresh(); } }, 60000);
+    aiStatus("Spreek de partij in, bijvoorbeeld: <i>“tweehonderd dozen trostomaten, vier euro per doos, tot vrijdag, ophalen in Barendrecht”</i>." +
+      (IOS ? " Het stopt vanzelf na een korte stilte." : " Tik op Stop als je klaar bent."));
+  } catch { stopListening(); aiStatus("Inspreken lukte niet. Tik in het tekstvak op de microfoon van je toetsenbord.", "warn"); }
 });
 
 // ---------- voorstel ophalen en invullen ----------
@@ -142,3 +161,5 @@ async function runAi(photoId, text) {
     aiStatus(esc(err.message || "Invullen lukte niet. Vul de gegevens zelf in."), "warn");
   } finally { AIS.busy = false; aiRefresh(); }
 }
+// Venster dicht (Annuleren, Publiceren, Escape): microfoon altijd uit
+$("#dlg-lot").addEventListener("close", () => { if (AIS.listening) stopListening(); });

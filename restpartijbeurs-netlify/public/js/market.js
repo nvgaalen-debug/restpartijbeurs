@@ -53,6 +53,59 @@ function thumbStrip(l) {
   const cls = ps.length === 1 ? " one" : ps.length === 2 ? " two" : "";
   return `<div class="thumbs${cls}">${ps.map((p, i) => `<button type="button" data-act="photo" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}" data-i="${i}" aria-label="Foto ${i + 1} van ${esc(l.product)} vergroten"><img src="${photoUrl(p)}" alt="" loading="lazy"></button>`).join("")}</div>`;
 }
+// ---------- telefoon: compacte tegel (2 kolommen); tikken opent de volledige advertentie ----------
+const isCompact = () => matchMedia("(max-width: 600px)").matches;
+const CAT_ICON = {
+  Groente: '<path d="M12 21c-4-3-6-7-6-11 0-3 2.5-6 6-7 3.5 1 6 4 6 7 0 4-2 8-6 11z"/><path d="M12 21V8"/>',
+  Fruit: '<path d="M12 7c-3-2-8-1-8 5s4 9 6 9c1 0 1.4-.5 2-.5s1 .5 2 .5c2 0 6-3 6-9s-5-7-8-5z"/><path d="M12 7c0-2 1-4 3-4"/>',
+  Aardappelen: '<path d="M6 8c2-4 9-5 12-2s2 10-3 12-11 1-11-4c0-2 1-4 2-6z"/><circle cx="10" cy="10" r=".6"/><circle cx="14" cy="13" r=".6"/><circle cx="10" cy="15" r=".6"/>',
+};
+const ICO = {
+  pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',
+  box: '<path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/>',
+  shop: '<path d="M3.5 9.5L5 4h14l1.5 5.5"/><path d="M3.5 9.5h17v10.5h-17z"/><path d="M9.5 20v-5.5h5V20"/>',
+};
+const svgI = (d, cls = "tl-ico") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+function lotTile(l) {
+  const st = lotState(l), mine = l.sellerId === S.me;
+  const ph = validPhotos(l)[0];
+  const rem = l.remaining ?? l.qty;
+  const until = l.until ? new Date(l.until + "T12:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short" }) : "";
+  const myOffer = myBidDoc()?.offers?.[l.id];
+  return `<article class="tl${st.closed ? " closed" : ""}" data-act="lot-detail" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}" tabindex="0" role="button" aria-label="${esc(l.product)}: details bekijken">
+    <div class="tl-photo">${ph ? `<img src="${photoUrl(ph)}" alt="" loading="lazy">` : `<div class="tl-noimg ${esc(l.category)}">${svgI(CAT_ICON[l.category] || CAT_ICON.Groente, "tl-catico")}</div>`}
+      <span class="tl-badge ${mine && !st.closed ? "mine" : st.cls}">${mine && !st.closed ? "Jouw partij" : st.closed || st.cls === "warn" ? esc(st.label) : "Beschikbaar"}</span>
+      ${myOffer && !st.closed ? `<span class="tl-mybid">Jouw bod</span>` : ""}</div>
+    <div class="tl-body">
+      <h3 class="tl-title">${esc(l.product)}</h3>
+      <div class="tl-meta">${esc(l.category)} · ${esc(l.klasse)}${l.origin ? " · " + esc(l.origin) : ""}</div>
+      <div class="tl-stats"><div><b>${num.format(rem)} ${esc(l.unit)}</b><span>Partij</span></div><div><b>${euro.format(l.price)}</b><span>Prijs per ${esc(unitSingular(l.unit))}</span></div></div>
+      ${l.location || until ? `<div class="tl-line">${svgI(ICO.pin)}<span>${esc(l.location || "")}${l.location && until ? "<br>" : ""}${until ? `<span class="sub">Tot ${esc(until)}</span>` : ""}</span></div>` : ""}
+      ${l.pack ? `<div class="tl-line">${svgI(ICO.box)}<span>${esc(l.pack)}</span></div>` : ""}
+      <div class="tl-seller">${svgI(ICO.shop)}<span>${esc(l.company || "")}</span><span class="tl-chev" aria-hidden="true">›</span></div>
+    </div>
+  </article>`;
+}
+const dlgDetail = $("#dlg-lotdetail");
+function openLotDetail(seller, lotId) {
+  S.detail = { seller, lotId };
+  renderLotDetail();
+  if (!dlgDetail.open) dlgDetail.showModal();
+}
+function renderLotDetail() {
+  if (!S.detail) return;
+  const l = allLots().find((x) => x.id === S.detail.lotId && x.sellerId === S.detail.seller);
+  if (!l) { if (dlgDetail.open) dlgDetail.close(); return; }
+  $("#ld-title").textContent = l.product;
+  $("#ld-body").innerHTML = lotCard(l);
+}
+dlgDetail.addEventListener("close", () => { S.detail = null; });
+document.addEventListener("keydown", (e) => {
+  const t = e.target.closest?.(".tl[data-act]");
+  if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); t.click(); }
+});
+matchMedia("(max-width: 600px)").addEventListener("change", () => { if (typeof renderMarket === "function") renderMarket(); });
+
 function unitSingular(u) { return ({ colli: "collo", pallets: "pallet", kisten: "kist", zakken: "zak" }[u]) || u; }
 
 const EXAMPLE = { product: "Trostomaten", ras: "Klasse I, maat B", category: "Groente", klasse: "Klasse I", origin: "NL", qty: 240, remaining: 240, unit: "colli", pack: "6 kg doos, 80 colli per pallet", minQty: 40, price: 6.5, location: "Barendrecht", company: "Kwekerij De Voorbeeldkas", contact: "010 000 0000", note: "Overschot na geannuleerde order. Kleur 7–8, morgen af te halen." };
@@ -74,7 +127,7 @@ function renderMarket() {
       <div class="example">${lotCard(EXAMPLE, { example: true })}</div></div>`;
     return;
   }
-  if (!S.showClosed) lots = lots.filter((l) => !lotState(l).closed);
+  if (!S.showClosed || isCompact()) lots = lots.filter((l) => !lotState(l).closed); // telefoon: alleen lopende partijen
   if (S.cat) lots = lots.filter((l) => l.category === S.cat);
   if (S.q) {
     const q = S.q.toLowerCase();
@@ -87,7 +140,9 @@ function renderMarket() {
     value: (a, b) => (b.remaining ?? b.qty) * b.price - (a.remaining ?? a.qty) * a.price,
   };
   lots.sort(sorters[S.sort]);
-  box.innerHTML = lots.length ? `<div class="grid">${lots.map((l) => lotCard(l)).join("")}</div>`
+  if (dlgDetail.open) renderLotDetail();
+  const compact = isCompact();
+  box.innerHTML = lots.length ? `<div class="${compact ? "tl-grid" : "grid"}">${lots.map((l) => (compact ? lotTile(l) : lotCard(l))).join("")}</div>`
     : `<div class="notice">Geen partijen gevonden met deze filters.</div>`;
 }
 
@@ -300,8 +355,9 @@ $("#photo-edit").addEventListener("click", (e) => {
 });
 $("#f-photo").addEventListener("change", (e) => { const f = e.target.files; if (f && f.length) addPhotos(f); e.target.value = ""; });
 dlgLot.addEventListener("close", () => {
-  // Niet opgeslagen: nieuw geüploade foto's weer weggooien
-  if (!S.lotSaved && S.newPhotos?.length) deletePhotos(S.newPhotos);
+  // Nieuw geüploade foto's NIET hier weggooien: als het opslaan nog bezig was (trage verbinding) of de server
+  // het al had opgeslagen, verwees de partij daarna naar een verwijderde foto. De server ruimt foto's die
+  // nergens bij horen zelf op (na 6 uur, bij de volgende keer opslaan).
   S.newPhotos = [];
 });
 
@@ -354,6 +410,7 @@ function openContact(sellerId, lotId) {
 const dlgPhoto = $("#dlg-photo");
 let lb = { list: [], i: 0, title: "" };
 function showLb() {
+  $("#lb-missing").hidden = true; $("#lb-img").hidden = false;
   $("#lb-img").src = photoUrl(lb.list[lb.i], true);
   $("#lb-img").alt = `${lb.title}, foto ${lb.i + 1}`;
   $("#lb-title").textContent = lb.title;
@@ -464,11 +521,12 @@ document.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act, lotId = t.dataset.lot, bidder = t.dataset.bidder;
+  if (act === "lot-detail") return openLotDetail(t.dataset.seller, lotId);
   if (act === "photo") return openLightbox(t.dataset.seller, lotId, t.dataset.i);
   if (act === "contact") return openContact(t.dataset.seller, lotId);
   if (act === "new") return openLotDialog();
   if (act === "bid") return openBidDialog(lotId);
-  if (act === "manage") return setView("mine");
+  if (act === "manage") { if (dlgDetail.open) dlgDetail.close(); return setView("mine"); }
   if (act === "goto-market") return setView("market");
   if (act === "edit") return openLotDialog(lotId);
   if (act === "withdraw" || act === "reopen") {
@@ -518,3 +576,13 @@ $("#cat-chips").addEventListener("click", (e) => {
 $("#q").addEventListener("input", (e) => { S.q = e.target.value.trim(); renderMarket(); });
 $("#sort").addEventListener("change", (e) => { S.sort = e.target.value; renderMarket(); });
 $("#show-closed").addEventListener("change", (e) => { S.showClosed = e.target.checked; renderMarket(); });
+
+// Foto die niet (meer) bestaat: geen kapot plaatje, maar een duidelijke melding / lege plek
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !/\/api\/photo\//.test(img.src)) return;
+  if (img.id === "lb-img") { img.hidden = true; $("#lb-missing").hidden = false; return; }
+  const ph = img.closest(".ph");
+  if (ph) { ph.classList.add("missing"); img.replaceWith(Object.assign(document.createElement("span"), { className: "ph-missing", textContent: "Foto ontbreekt" })); return; }
+  img.classList.add("img-missing"); img.alt = "Foto ontbreekt";
+}, true);
