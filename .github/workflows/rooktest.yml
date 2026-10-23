@@ -6,7 +6,7 @@
 #  - met de hand: Actions → "Rooktest na release" → Run workflow (kies test of productie);
 #  - elke ochtend: productie, alleen kijken.
 # Instellen (GitHub → Settings → Secrets and variables → Actions):
-#  Variables: SMOKE_URL_TEST, SMOKE_URL_PROD
+#  Variables: SMOKE_URL_TEST
 #  Secrets:   TEST_SELLER, TEST_SELLER_CODE, TEST_BUYER, TEST_BUYER_CODE, PROD_BUYER, PROD_BUYER_CODE
 #             (optioneel) TEST_API_KEY, PROD_API_KEY
 name: Rooktest na release
@@ -20,7 +20,7 @@ on:
       omgeving:
         description: "Welke omgeving testen?"
         type: choice
-        options: [test, productie]
+        options: [test]
         default: test
       ai:
         description: "Ook de AI-invulhulp testen (testomgeving; kost minder dan een cent)"
@@ -41,7 +41,7 @@ jobs:
       run:
         working-directory: restpartijbeurs-netlify/tests
     env:
-      SMOKE_URL: ${{ (github.event_name == 'schedule' || inputs.omgeving == 'productie') && vars.SMOKE_URL_PROD || vars.SMOKE_URL_TEST }}
+      SMOKE_URL: ${{ (github.event_name == 'schedule' || inputs.omgeving == 'productie') && vars.SMOKE_URL_TEST || vars.SMOKE_URL_TEST }}
       TEST_SELLER: ${{ secrets.TEST_SELLER }}
       TEST_SELLER_CODE: ${{ secrets.TEST_SELLER_CODE }}
       TEST_BUYER: ${{ secrets.TEST_BUYER }}
@@ -60,7 +60,7 @@ jobs:
           node-version: 22
       - name: Welk adres?
         run: |
-          if [ -z "$SMOKE_URL" ]; then echo "::error::Zet de variabelen SMOKE_URL_TEST en SMOKE_URL_PROD (Settings → Secrets and variables → Actions → Variables)"; exit 1; fi
+          if [ -z "$SMOKE_URL" ]; then echo "::error::Zet de variabelen SMOKE_URL_TEST en (Settings → Secrets and variables → Actions → Variables)"; exit 1; fi
           echo "Test: $SMOKE_URL"
       - name: Wachten tot Netlify de nieuwe versie heeft gepubliceerd
         if: github.event_name == 'push'
