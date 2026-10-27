@@ -100,7 +100,7 @@ const validGtin = (s) => /^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(s) && gs1Check(s)
 const validGln = (s) => /^\d{13}$/.test(s) && gs1Check(s);
 
 export function createV1(d) {
-  const { q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES } = d;
+  const { q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES, Push, afterLots } = d;
   const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
   const envKey = () => (process.env.APP_ENV === "test" ? "test" : "live");
 
@@ -262,14 +262,20 @@ export function createV1(d) {
   }
   // Na het opslaan van partijen (app, API of beheer): nieuwe gunningen melden aan verkoper en koper
   async function emitForLots(seller, prev, next, base) {
+    // Vraag en aanbod: kopers met een passende vraag horen het van een nieuwe partij (app én API)
+    if (afterLots) { try { await afterLots(seller, prev, next, base); } catch (e) { console.error("match", e); } }
     const a = prev?.items || {}, b = next?.items || {};
     const fresh = [];
+    let rejects = false;
     for (const [id, it] of Object.entries(b)) {
       for (const [buyer, acc] of Object.entries(it.accepted || {})) if (!a[id]?.accepted?.[buyer]) fresh.push({ id, it, buyer, acc });
+      if (Object.keys(it.rejected || {}).some((x) => !a[id]?.rejected?.[x])) rejects = true;
     }
-    if (!fresh.length) return;
+    if (!fresh.length && !rejects) return;
     const who = await companies([seller.id, ...fresh.map((x) => x.buyer)]);
     const names = nameMap(who);
+    // Pushmelding naar de koper (gegund / niet gegund); een fout hier mag de koppelingen niet hinderen
+    if (Push) { try { await Push.forLots(seller, prev, next, names, base); } catch (e) { console.error("push", e); } }
     const party = (id) => ({ id, company: who[id]?.company || who[id]?.name || null, contact: who[id]?.contact || null });
     for (const { id, it, buyer, acc } of fresh) {
       const award = { quantity: acc.qty, unit: UNIT_R[it.unit] || null, price: money(acc.price), total: money(Math.round(acc.qty * acc.price * 100) / 100), awardedAt: acc.at };
@@ -285,6 +291,7 @@ export function createV1(d) {
     const who = await companies([buyer.id]);
     for (const [lotId, o] of changed) {
       const lot = (await readDoc("lots", o.sellerId)).data?.items?.[lotId];
+      if (Push) { try { await Push.forBid(o.sellerId, lotId, lot, o, next.company || who[buyer.id]?.company || who[buyer.id]?.name, !!a[lotId], base); } catch (e) { console.error("push", e); } }
       await emit(o.sellerId, "bid.received", {
         lot: lot ? { id: lotId, externalId: lot.externalId || null, product: lot.product || "", remainingQuantity: lot.remaining ?? lot.qty } : { id: lotId, externalId: null },
         bid: { buyer: { id: buyer.id, company: next.company || who[buyer.id]?.company || null, contact: next.contact || who[buyer.id]?.contact || null }, quantity: o.qty, price: money(o.price), note: o.note || null, placedAt: o.at, updated: !!a[lotId] },

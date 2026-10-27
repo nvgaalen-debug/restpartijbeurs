@@ -6,7 +6,7 @@ Een automatische controle van de echte site, na elke nieuwe versie. Duurt ongeve
 
 | Omgeving | Wat de test doet |
 |---|---|
-| **Test** (`APP_ENV=test`) | Alles hieronder, plus een volledige handel: aanbieder zet een partij met foto online, koper bekijkt de foto en biedt, aanbieder gunt, koper ziet de gunning, aanbieder trekt de rest in. Optioneel ook de AI-invulhulp. |
+| **Test** (`APP_ENV=test`) | Alles hieronder, plus een volledige handel: aanbieder zet een partij met foto online, koper bekijkt de foto en biedt, aanbieder gunt, koper ziet de gunning, aanbieder trekt de rest in. Daarna vraag en aanbod: koper plaatst een vraag, aanbieder reageert op de telefoon met "Ik kan leveren", koper ziet de reactie en sluit de vraag, aanbieder trekt de partij in. Optioneel ook de AI-invulhulp. |
 | **Productie** | Alleen kijken: site en beveiliging, versie, inlogscherm, inloggen als koper, aanbod op computer en telefoon (grote foto laadt), API. **Er wordt niets aangemaakt of gewijzigd.** |
 
 De test leest zelf uit de site welke omgeving het is; de volledige handel draait nooit op productie.

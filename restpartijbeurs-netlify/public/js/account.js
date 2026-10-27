@@ -19,6 +19,7 @@ $("#form-forcecode").addEventListener("submit", async (e) => {
   } catch (ex) { $("#fc-err").textContent = ex.message; }
 });
 $("#fc-logout").addEventListener("click", async () => {
+  if (typeof pushLogout === "function") await pushLogout();
   try { await api("logout", { method: "POST" }); } catch {}
   dlgForce.close(); signOutLocal(); $("#user-box").hidden = true; showLogin("Je bent uitgelogd.");
 });
@@ -30,9 +31,9 @@ function signOutLocal() {
   stopPolling();
   setToken("");
   S.user = null; S.me = null; S.canWrite = null; S.ready = false; S.lastNow = "";
-  S.lotsDocs = new Map(); S.bidsDocs = new Map(); S.versions = {}; S.market = {};
+  S.lotsDocs = new Map(); S.bidsDocs = new Map(); S.wantsDocs = new Map(); S.versions = {}; S.market = {};
 }
-function hideAllViews() { ["market", "mine", "bids", "admin"].forEach((v) => ($("#view-" + v).hidden = true)); $("#announce").hidden = true; $("#subbar").hidden = true; }
+function hideAllViews() { ["market", "wanted", "mine", "bids", "admin"].forEach((v) => ($("#view-" + v).hidden = true)); $("#announce").hidden = true; $("#subbar").hidden = true; }
 async function showLogin(msg) {
   document.body.classList.add("locked");
   hideAllViews();
@@ -178,7 +179,7 @@ function enterApp(user) {
   $("#tab-admin").hidden = user.role !== "beheerder";
   let v = "market";
   try {
-    const s = localStorage.getItem("rpb.view"); if (["mine", "bids"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s;
+    const s = localStorage.getItem("rpb.view"); if (["mine", "bids", "wanted"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s;
     const ap = localStorage.getItem("rpb.apane"); if (["dash", "stats", "users", "lots", "reasons", "log", "settings"].includes(ap)) S.apane = ap;
   } catch {}
   setView(v);
@@ -211,6 +212,7 @@ $("#form-setup").addEventListener("submit", async (e) => {
   } catch (err) { $("#setup-err").textContent = err.message; }
 });
 $("#btn-logout").addEventListener("click", async () => {
+  if (typeof pushLogout === "function") await pushLogout();
   try { await api("logout", { method: "POST" }); } catch {}
   signOutLocal();
   $("#user-box").hidden = true;

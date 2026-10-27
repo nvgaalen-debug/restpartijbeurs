@@ -255,7 +255,7 @@ $("#form-reasons").addEventListener("submit", async (e) => {
 $$("[data-apane]").forEach((b) => b.addEventListener("click", () => setAdminPane(b.dataset.apane)));
 $$("[data-goto-pane]").forEach((b) => b.addEventListener("click", () => setAdminPane(b.dataset.gotoPane)));
 
-const KIND = { inloggen: "Inloggen", account: "Aanvraag", partij: "Partij", bod: "Bod", gunning: "Gunning", betaling: "Betaling", beheer: "Beheer" };
+const KIND = { inloggen: "Inloggen", account: "Aanvraag", partij: "Partij", bod: "Bod", gunning: "Gunning", betaling: "Betaling", beheer: "Beheer", vraag: "Vraag" };
 const fmtTime = (iso) => new Date(iso).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const fmtDate = (d) => (d ? new Date(d + "T12:00").toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" }) : "");
 

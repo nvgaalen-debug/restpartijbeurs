@@ -393,6 +393,7 @@ dialog.wide { width: min(760px, calc(100vw - 32px)); }
   dialog.sheet .dlg-head { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 8px; border-bottom: 1px solid var(--line); }
   dialog.sheet .dlg-head h2 { font-size: 22px; }
   dialog.sheet .dlg-head p { display: none; }
+  dialog.sheet .dlg-head p.lot-want:not([hidden]) { display: block; font-size: 13px; margin-top: 6px; }
   dialog.sheet .form { padding: 12px 16px; flex: 1; }
   dialog.sheet .dlg-foot { position: sticky; bottom: 0; z-index: 2; background: var(--surface); border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
   dialog.sheet .dlg-foot .actions { width: 100%; display: flex; gap: 10px; }
@@ -439,6 +440,11 @@ dialog.wide { width: min(760px, calc(100vw - 32px)); }
   .tab .n { position: absolute; top: 6px; right: 6px; margin: 0; vertical-align: 0; min-width: 20px; text-align: center; }
   .tab[aria-selected="true"] .n { background: var(--accent); color: var(--accent-ink); }
   .tab .n.alert { background: var(--warn); color: #fff; }
+  /* Beheerder: vijf tegels naast elkaar, iets compacter */
+  .tabs:has(#tab-admin:not([hidden])) { gap: 5px; }
+  .tabs:has(#tab-admin:not([hidden])) .tab { font-size: 11.5px; padding: 14px 2px 7px; min-height: 72px; }
+  .tabs:has(#tab-admin:not([hidden])) .tab-ico { width: 24px; height: 24px; }
+  .tabs:has(#tab-admin:not([hidden])) .tab .n { top: 3px; right: 3px; font-size: 10.5px; min-width: 17px; padding: 0 5px; }
   #btn-new { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30; border-radius: 99px;
     padding: 14px 20px 14px 16px; font-size: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
   #btn-new .fab-plus { font-size: 22px; line-height: 1; margin-right: 2px; }
@@ -577,3 +583,46 @@ body:not(.locked) .bg-brand .o1 { top: 140px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bg-brand { opacity: .18; } }
 :root[data-theme="dark"] .bg-brand { opacity: .18; }
 @media print { .bg-brand { display: none !important; } }
+
+/* Pushmeldingen in Mijn account */
+.push-card { display: grid; gap: 10px; }
+.push-msg { margin: 0; font-size: 14px; color: var(--ink); }
+.push-msg:empty { display: none; }
+.push-ios { margin: 0; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
+.push-prefs { display: grid; gap: 8px; }
+.push-prefs label.check { white-space: normal; color: var(--ink); }
+.push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.push-actions:not(:has(button:not([hidden]))) { display: none; }
+
+/* Gevraagd: vragen van kopers */
+.want-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.want-intro p { margin: 0; color: var(--muted); max-width: 70ch; }
+#want-chips { margin-bottom: 14px; }
+.want-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.want { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; min-width: 0; transition: box-shadow .3s; }
+.want.mine { border-color: var(--accent); }
+.want.closed { opacity: .72; }
+.want.flash { box-shadow: 0 0 0 3px var(--accent); }
+.want-body { padding: 12px 14px 4px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.want .prod { font-size: 24px; }
+.want-specs { font-size: 15px; font-variant-numeric: tabular-nums; }
+.want-meta { font-size: 13.5px; color: var(--muted); }
+.want-meta:empty { display: none; }
+.want-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px 14px; flex-wrap: wrap; }
+.want-who { font-size: 13.5px; color: var(--muted); }
+.want-none, .want-yours { font-size: 13.5px; color: var(--muted); background: var(--bg); border-radius: var(--r); padding: 8px 10px; }
+.want-yours b { color: var(--ink); }
+.want-hits { display: grid; gap: 6px; }
+.want-hits-title { font-size: 13px; font-weight: 600; color: var(--ok); }
+.want-hit { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; }
+.want-hit:hover { border-color: var(--accent); }
+.want-hit .sub { display: block; font-size: 12.5px; color: var(--muted); }
+.want-hit-price { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.want-tag { display: inline-block; font-size: 11.5px; font-weight: 600; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 1px 8px; margin-top: 4px; }
+.lot-want { margin: 8px 0 0; padding: 8px 10px; border-radius: var(--r); background: var(--accent-soft); color: var(--ink); font-size: 14px; }
+@media (max-width: 600px) {
+  .want-grid { grid-template-columns: 1fr; gap: 10px; }
+  .want .prod { font-size: 21px; }
+  #want-chips { gap: 6px; }
+  #want-chips .chip { padding: 6px 11px; font-size: 13.5px; }
+}

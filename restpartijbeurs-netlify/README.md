@@ -13,6 +13,8 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/js/core.js` | Basis: praten met de server, opslaan, meldingen |
 | `public/js/market.js` | Aanbod, mijn partijen, mijn biedingen, foto's, contact |
 | `public/js/account.js` | Inloggen, account aanvragen, code vergeten, mijn account |
+| `public/js/push.js`, `public/sw.js` | Pushmeldingen: aanzetten in Mijn account, service worker die de melding toont |
+| `public/js/wants.js` | Gevraagd: vragen van kopers, "Ik kan leveren", passend aanbod |
 | `public/js/admin.js` | Beheer: dashboard, gebruikers, redencodes, betalingen, logboek, instellingen |
 | `public/js/payments.js` | Abonnement online betalen (Mollie) |
 | `public/js/stats.js` | Beheer: statistieken |
@@ -25,6 +27,8 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `tests/` | Rooktest na elke release (Playwright); uitleg in `tests/README.md`. GitHub-workflow: `rooktest.yml` (hoort in `.github/workflows/`) |
 | `public/icons/` | Standaard app-iconen zolang er geen eigen logo is |
 | `netlify/lib/ai-photo.mjs` | Serverkant van de foto-herkenning (Claude via de Anthropic API) |
+| `netlify/lib/push.mjs` | Pushmeldingen versturen (Web Push, versleuteld en ondertekend, zonder extra pakketten) |
+| `netlify/lib/match.mjs` | Regels: past een partij bij een vraag? |
 | `public/js/start.js` | Start de app (wordt als laatste geladen) |
 | `public/_headers` | Beveiligingsheaders voor de website (o.a. Content-Security-Policy) |
 | `netlify/functions/api.mjs` | De serverfunctie op `/api/...`: inloggen, gebruikers, partijen en biedingen |
@@ -100,6 +104,45 @@ Grenzen: maximaal 60 foto's per uur per gebruiker en 1000 per dag voor de hele s
 ## Eigen logo
 
 Beheer → Instellingen → **Logo**: kies een PNG, JPEG, WebP of SVG (een SVG wordt in de browser omgezet naar PNG; de server bewaart nooit SVG). De browser maakt er vierkante app-iconen van (512, 192, 180 en 32 px) met de gekozen achtergrondkleur; voor een breed logo kies je via "Apart app-icoon…" een vierkant beeldmerk. Het logo verschijnt in de kopregel en op het inlogscherm, in het tabblad van de browser, in HTML-e-mails (als `URL` in Netlify een https-adres is) en als icoon wanneer iemand de site op het beginscherm van een telefoon zet (`/api/manifest.webmanifest`, `apple-touch-icon`). Bestanden staan in de tabel `rpb_assets` en worden geserveerd via `/api/brand/logo` en `/api/brand/icon-<maat>.png`.
+
+## Pushmeldingen op telefoon en computer
+
+Elke gebruiker zet dit zelf aan per toestel: **Mijn account → Meldingen op dit toestel → Meldingen aanzetten**. Er zijn drie soorten meldingen, elk apart aan of uit te zetten:
+
+- **Nieuw bod op mijn partij** gaat naar de aanbieder. Een tik op de melding opent Mijn partijen met die partij.
+- **Mijn bod gegund** gaat naar de koper, met aantal, prijs en afhaalplaats. Een tik op de melding opent Mijn biedingen.
+- **Mijn bod niet gegund** gaat naar de koper. Een tik op de melding opent het aanbod.
+
+Waar het werkt:
+
+- **Android en computer** (Chrome, Edge, Firefox, Safari): direct in de browser.
+- **iPhone en iPad** (iOS 16.4 of nieuwer): alleen als de site op het beginscherm staat en vanaf dat icoon is geopend. De app laat de stappen zelf zien.
+
+Bij uitloggen wordt het toestel afgemeld.
+
+**Niets in te stellen.** De server maakt bij het eerste gebruik zelf een sleutelpaar (VAPID) en bewaart dat in de database (`rpb_settings`, sleutel `_vapid`). Test en productie hebben elk een eigen schema en dus eigen sleutels, zodat een testmelding nooit bij echte klanten komt. Wie de sleutels zelf wil beheren, zet `VAPID_PUBLIC_KEY` en `VAPID_PRIVATE_KEY` (base64url) in Netlify. Vervang die daarna niet meer, want dan moet iedereen meldingen opnieuw aanzetten.
+
+**Techniek:**
+
+- Standaard Web Push, zonder app store en zonder extra pakketten. Versleuteling volgens RFC 8291 (aes128gcm) en ondertekening volgens RFC 8292 (ES256).
+- `public/sw.js` is alleen voor meldingen en bewaart bewust geen cache.
+- Abonnementen staan in `rpb_push`, één regel per toestel, maximaal 10 per gebruiker.
+- Meldingen gaan alleen naar de pushdiensten van Apple, Google, Mozilla en Microsoft. Een toestel dat de pushdienst als verdwenen meldt (404 of 410), wordt opgeruimd.
+- Endpoints:
+  - `GET /api/push` geeft de publieke sleutel en de keuzes van dit toestel;
+  - `POST /api/push/subscribe`;
+  - `PUT /api/push/prefs`;
+  - `POST /api/push/unsubscribe`;
+  - `POST /api/push/test`.
+
+## Gevraagd: vraag en aanbod
+
+Kopers zetten in het tabblad **Gevraagd** wat ze zoeken: product, categorie, hoeveelheid, klasse (of "maakt niet uit"), maximale prijs (leeg = in overleg), nodig vóór, regio en toelichting. Aanbieders tikken op **Ik kan leveren**: het venster *Partij aanbieden* opent, al ingevuld met de vraag. De partij die zo ontstaat is een gewone partij (bieden, gunnen en meldingen zoals altijd), met een vaste koppeling naar de vraag (`wantRef`).
+
+- **Passen vraag en aanbod bij elkaar** (zelfde categorie, product komt overeen — enkelvoud/meervoud maakt niet uit, "aardappelen" past bij "Frietaardappelen" —, klasse als gekozen, prijs niet boven het maximum), dan zie je dat bij de vraag. De koper krijgt een pushmelding bij een nieuwe passende partij, de aanbieder bij een nieuwe vraag die past bij zijn partij ("Er wordt gevraagd wat jij hebt", zonder naam van de koper). Regels: `netlify/lib/match.mjs` (server) en `public/js/wants.js` (app) — houd die twee gelijk.
+- De koper sluit de vraag met **Gevonden** of **Intrekken**; na de datum verloopt hij vanzelf. Gesloten vragen ziet alleen de koper zelf (onder *Mijn vragen*, met *Heropenen*) en de beheerder.
+- Opslag: `rpb_docs` met collectie `wants` (één document per koper, net als partijen en biedingen); de server controleert alles. Logboek: soort *Vraag*. Leegmaken van de handel wist ook vragen.
+- Meldingen: nieuw schuifje *Vraag en aanbod passen bij elkaar* in Mijn account; toestellen die al aangemeld waren krijgen het automatisch.
 
 ## FoodSource API v1 (koppelingen)
 

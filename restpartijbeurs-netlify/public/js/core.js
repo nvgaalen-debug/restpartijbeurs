@@ -13,7 +13,7 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
 
 const S = {
   token: "", user: null, me: null, canWrite: null, ready: false, offline: false, lastNow: "",
-  lotsDocs: new Map(), bidsDocs: new Map(), profiles: {}, versions: {}, market: {}, legacyToken: "",
+  lotsDocs: new Map(), bidsDocs: new Map(), wantsDocs: new Map(), profiles: {}, versions: {}, market: {}, legacyToken: "",
   view: "market", cat: "", q: "", sort: "new", showClosed: false,
   editing: null, bidLot: null,
 };
@@ -77,9 +77,9 @@ function queue(fn) { S.pendingSaves = (S.pendingSaves || 0) + 1; const p = chain
 // en passen we de wijziging daar opnieuw op toe.
 async function writeDoc(collection, mutate) {
   for (let tryNo = 0; tryNo < 3; tryNo++) {
-    const map = collection === "lots" ? S.lotsDocs : S.bidsDocs; // na een volledige verversing is dit een nieuwe Map
-    const doc = clone(map.get(S.me) || (collection === "lots" ? { items: {} } : { offers: {} }));
-    if (collection === "lots") doc.items = doc.items || {}; else doc.offers = doc.offers || {};
+    const mapOf = () => (collection === "lots" ? S.lotsDocs : collection === "wants" ? S.wantsDocs : S.bidsDocs); // na een volledige verversing is dit een nieuwe Map
+    const doc = clone(mapOf().get(S.me) || (collection === "bids" ? { offers: {} } : { items: {} }));
+    if (collection === "bids") doc.offers = doc.offers || {}; else doc.items = doc.items || {};
     mutate(doc);
     // writeSeq verandert bij begin én einde van het opslaan: een ophaalronde die daar
     // (deels) overheen liep, kan verouderd zijn en wordt dan niet gebruikt
@@ -87,7 +87,7 @@ async function writeDoc(collection, mutate) {
     try {
       const r = await api("doc/" + collection, { method: "PUT", body: { data: doc, base: S.versions[collection + "/" + S.me] || 0 } });
       // In de Map van nu zetten: een volledige verversing tijdens het opslaan maakt een nieuwe Map
-      (collection === "lots" ? S.lotsDocs : S.bidsDocs).set(S.me, r.data || doc);
+      mapOf().set(S.me, r.data || doc);
       S.versions[collection + "/" + S.me] = r.version;
       S.writeSeq++;
       render();
@@ -157,9 +157,9 @@ async function pullOnce(full) {
     const d = await api("data" + (since ? "?since=" + encodeURIComponent(since) : ""));
     // Is er tijdens het ophalen iets opgeslagen, dan is dit antwoord mogelijk ouder: niet gebruiken, direct opnieuw
     if ((S.writeSeq || 0) !== seq0) { pullAgain = true; pullAgainFull = pullAgainFull || !!full; return; }
-    if (d.full) { S.lotsDocs = new Map(); S.bidsDocs = new Map(); }
+    if (d.full) { S.lotsDocs = new Map(); S.bidsDocs = new Map(); S.wantsDocs = new Map(); }
     for (const doc of d.docs || []) {
-      const map = doc.collection === "lots" ? S.lotsDocs : doc.collection === "bids" ? S.bidsDocs : null;
+      const map = doc.collection === "lots" ? S.lotsDocs : doc.collection === "bids" ? S.bidsDocs : doc.collection === "wants" ? S.wantsDocs : null;
       if (!map) continue;
       const key = doc.collection + "/" + doc.id;
       if (!d.full && (doc.version || 0) < (S.versions[key] || 0)) continue; // we hebben al een nieuwere versie
@@ -208,6 +208,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("focus", () => { if (S.token && Date.now() - (S.lastPullAt || 0) > 5000) { lastActivity = Date.now(); pull(); } });
 function saveMyLots(mutate) { return queue(() => writeDoc("lots", mutate)); }
 function saveMyBids(mutate) { return queue(() => writeDoc("bids", mutate)); }
+function saveMyWants(mutate) { return queue(() => writeDoc("wants", mutate)); }
 
 // ---------- renderen ----------
 // Eén plek om "mag deze gebruiker handelen" te wijzigen; ververst het scherm hooguit één keer

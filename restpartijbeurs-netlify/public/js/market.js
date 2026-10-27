@@ -35,7 +35,7 @@ function lotCard(l, { example = false } = {}) {
       <span class="pill ${st.cls}">${mine && !st.closed ? "Jouw partij" : st.label}</span></div>
     <div class="lot-body">
       ${example ? "" : thumbStrip(l)}
-      <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}</div>
+      <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}${!example && l.wantRef && l.wantRef.startsWith(S.me + ":") ? `<div class="want-tag">Reactie op jouw vraag</div>` : ""}</div>
       ${specRows(l)}
       ${l.note ? `<div class="note">${esc(l.note)}</div>` : ""}
     </div>
@@ -253,6 +253,7 @@ function render() {
     renderMarket();
     renderMine();
     renderBids();
+    if (typeof renderWants === "function") renderWants();
   } finally { rendering = false; }
 }
 
@@ -261,11 +262,13 @@ function setView(v) {
   S.view = v;
   $$(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.view === v)));
   $("#view-market").hidden = v !== "market";
+  $("#view-wanted").hidden = v !== "wanted";
   $("#view-mine").hidden = v !== "mine";
   $("#view-bids").hidden = v !== "bids";
   $("#view-admin").hidden = v !== "admin";
   $("#view-login").hidden = true;
   document.body.dataset.view = v; // telefoon: knop "Partij aanbieden" niet over Beheer heen
+  const ft = $("#btn-new .fab-text"); if (ft) ft.textContent = v === "wanted" ? " Vraag plaatsen" : " Partij aanbieden";
   if (v === "admin") setAdminPane(S.apane || "dash");
   try { localStorage.setItem("rpb.view", v); } catch {}
 }
@@ -279,8 +282,9 @@ const eurOut = (n) => (typeof n === "number" && isFinite(n) ? n.toFixed(2).repla
 const decOut = (n) => (n === null || n === undefined || n === "" ? "" : String(n).replace(".", ","));
 const decIn = (v) => { let t = String(v ?? "").trim().replace(/\s/g, ""); if (t.includes(",")) t = t.replace(/\./g, "").replace(",", "."); return parseFloat(t); };
 const intIn = (v) => { const t = String(v ?? "").trim().replace(/[\s.]/g, ""); return /^\d+$/.test(t) ? parseInt(t, 10) : NaN; };
-function openLotDialog(lotId) {
+function openLotDialog(lotId, prefill) {
   S.editing = lotId || null;
+  S.wantRef = !lotId && prefill?.wantRef ? prefill.wantRef : "";
   const doc = myLotsDoc();
   const l = lotId ? doc.items[lotId] : null;
   $("#lot-title").textContent = l ? "Partij bewerken" : "Partij aanbieden";
@@ -299,6 +303,12 @@ function openLotDialog(lotId) {
   S.lotSaved = false;
   S.uploading = 0;
   renderPhotoEdit();
+  if (prefill) {
+    for (const [id, val] of Object.entries(prefill.fields || {})) if (val !== undefined && val !== null && val !== "") $(id).value = val;
+    $("#f-kg-field").hidden = $("#f-unit").value === "kg";
+    $("#lot-title").textContent = prefill.title || $("#lot-title").textContent;
+  }
+  $("#lot-want").hidden = !S.wantRef; $("#lot-want").textContent = S.wantRef ? prefill.banner || "" : "";
   document.dispatchEvent(new CustomEvent("lot-dialog-open"));
   dlgLot.showModal();
   if (isTouch()) dlgLot.scrollTop = 0; else $("#f-product").focus();
@@ -451,6 +461,7 @@ $("#form-lot").addEventListener("submit", async (e) => {
       location: val("#f-loc"), qty, unit: val("#f-unit"), minQty, price, until: val("#f-until"), pack: val("#f-pack"), note: val("#f-note"),
       kgPerUnit: val("#f-unit") === "kg" ? 1 : (decIn(val("#f-kg")) > 0 ? Math.round(decIn(val("#f-kg")) * 1000) / 1000 : null),
       company, contact, photos,
+      ...(!prev.createdAt && S.wantRef ? { wantRef: S.wantRef } : {}),
       remaining: Math.max(0, qty - soldQty),
       status: prev.status === "ingetrokken" ? "ingetrokken" : (qty - soldQty <= 0 ? "verkocht" : "open"),
       createdAt: prev.createdAt || new Date().toISOString(),
@@ -462,7 +473,7 @@ $("#form-lot").addEventListener("submit", async (e) => {
     const removed = (S.origPhotos || []).filter((p) => !photos.includes(p));
     if (removed.length) deletePhotos(removed);
     dlgLot.close();
-    toast(S.editing ? "Partij bijgewerkt." : "Partij gepubliceerd. Kopers zien hem nu in het aanbod.");
+    toast(S.editing ? "Partij bijgewerkt." : S.wantRef ? "Partij gepubliceerd. De koper krijgt bericht dat je kunt leveren." : "Partij gepubliceerd. Kopers zien hem nu in het aanbod.");
   }
 });
 
@@ -565,7 +576,7 @@ document.addEventListener("click", async (e) => {
     if (ok) toast("Bod verwijderd.");
   }
 });
-$("#btn-new").addEventListener("click", () => openLotDialog());
+$("#btn-new").addEventListener("click", () => (S.view === "wanted" && typeof openWantDialog === "function" ? openWantDialog() : openLotDialog()));
 $$(".tab").forEach((t) => t.addEventListener("click", () => setView(t.dataset.view)));
 $("#cat-chips").addEventListener("click", (e) => {
   const c = e.target.closest("[data-cat]"); if (!c) return;

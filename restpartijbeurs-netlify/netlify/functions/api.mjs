@@ -24,10 +24,12 @@ import crypto from "node:crypto";
 import tls from "node:tls";
 import { createV1 } from "../lib/foodsource-v1.mjs";
 import { createAi, aiConfigured, aiModel } from "../lib/ai-photo.mjs";
+import { createPush } from "../lib/push.mjs";
+import { wantMatchesLot, lotOpen, wantOpen } from "../lib/match.mjs";
 
 export const config = { path: "/api/*" };
 
-const COLLECTIONS = new Set(["lots", "bids"]);
+const COLLECTIONS = new Set(["lots", "bids", "wants"]); // wants = vragen van kopers ("Gevraagd")
 const MAX_DOC_BYTES = 256 * 1024;
 const MAX_FULL_BYTES = 450 * 1024;   // grote foto, na verkleinen in de browser
 const MAX_THUMB_BYTES = 60 * 1024;   // miniatuur
@@ -41,13 +43,13 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
-const SCHEMA_VERSION = "2026-10-21a"; // verhogen bij elke wijziging in ensureSchema
+const SCHEMA_VERSION = "2026-10-27a"; // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 // Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
 // Alleen tabellen van de Restpartijbeurs (vaste lijst), nooit die van een andere app (zoals records van Vloeren Kassa).
 const PG_MIGRATE_FROM = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_MIGRATE_FROM || "") ? process.env.PG_MIGRATE_FROM : "";
-const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets"];
+const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets", "rpb_push"];
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -232,6 +234,20 @@ async function ensureSchema() {
         data TEXT NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
       )`);
+      // Pushmeldingen: één regel per toestel (telefoon, computer) met eigen keuzes
+      await q(`CREATE TABLE IF NOT EXISTS rpb_push (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        prefs JSONB,
+        label TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL,
+        last_ok_at TIMESTAMPTZ,
+        fails INTEGER NOT NULL DEFAULT 0
+      )`);
+      await q("CREATE INDEX IF NOT EXISTS rpb_push_user ON rpb_push (user_id)");
       await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
   }
@@ -455,7 +471,7 @@ async function getSettings() {
 // Leegmaken mag standaard alleen in de testomgeving
 function wipeAllowed() { return process.env.APP_ENV === "test" || process.env.ALLOW_WIPE === "true"; }
 const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events"];
-const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
+const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_push", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
 
 // ---------- e-mail: via Gmail (SMTP) of via Brevo ----------
 const MAIL_BASE = process.env.MAIL_API_BASE || "https://api.brevo.com/v3";
@@ -825,7 +841,7 @@ async function writeDocAt(collection, id, cur, data, by) {
 const UNITS = ["colli", "kg", "pallets", "kisten", "zakken"];
 const CATEGORIES = ["Groente", "Fruit", "Aardappelen"];
 const KLASSEN = ["Klasse I", "Klasse II", "Industrie / verwerking", "Biologisch Klasse I", "Biologisch Klasse II"];
-const LOT_TEXT = { externalId: 80, gtin: 14, gln: 13, product: 80, ras: 80, category: 40, klasse: 40, origin: 60, location: 80, unit: 20, pack: 120, note: 1000, company: 120, contact: 120 };
+const LOT_TEXT = { wantRef: 90, externalId: 80, gtin: 14, gln: 13, product: 80, ras: 80, category: 40, klasse: 40, origin: 60, location: 80, unit: 20, pack: 120, note: 1000, company: 120, contact: 120 };
 const num = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v.replace(",", ".")) : NaN);
 const isoOr = (v, d) => (typeof v === "string" && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : d);
 const sumQty = (acc) => Object.values(acc || {}).reduce((s, a) => s + (Number(a?.qty) || 0), 0);
@@ -866,6 +882,9 @@ async function normalizeLots(me, prev, data) {
     const kg = num(it0.kgPerUnit);
     it.kgPerUnit = kg > 0 && kg <= 100000 ? kg : null;
     it.until = validDate(it0.until) ? it0.until : "";
+    // Reactie op een vraag ("koper:vraag"): alleen bij het aanmaken te zetten, daarna vast
+    it.wantRef = was ? (was.wantRef || "") : (/^[A-Za-z0-9_-]{1,40}:[A-Za-z0-9_-]{1,40}$/.test(it.wantRef) && !it.wantRef.startsWith(me.id + ":") ? it.wantRef : "");
+    if (!it.wantRef) delete it.wantRef;
     // Foto's: alleen eigen foto's, maximaal 3
     const photos = Array.isArray(it0.photos) ? it0.photos.filter((x) => typeof x === "string").slice(0, 3) : [];
     for (const ph of photos) if (!ownPhotos.has(ph) && !(was?.photos || []).includes(ph)) throw httpError(403, "Je kunt alleen je eigen foto's gebruiken.");
@@ -970,6 +989,119 @@ async function normalizeBids(me, prev, data) {
   return { company: str(data.company, 120), contact: str(data.contact, 120), offers };
 }
 
+// ---------- controle van vragen (Gevraagd) ----------
+const WANT_CLOSE = ["gevonden", "niet meer nodig"];
+async function normalizeWants(me, prev, data) {
+  const raw = data.items && typeof data.items === "object" && !Array.isArray(data.items) ? data.items : {};
+  if (Object.keys(raw).length > 300) throw httpError(413, "Te veel vragen. Sluit oude vragen af.");
+  const old = prev?.items || {};
+  const nowIso = new Date().toISOString(), t = today();
+  const items = {};
+  for (const [id, w0] of Object.entries(raw)) {
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || !w0 || typeof w0 !== "object" || Array.isArray(w0)) throw httpError(400, "Ongeldige vraag.");
+    const was = old[id];
+    const w = { product: str(w0.product, 80), category: str(w0.category, 40), unit: str(w0.unit, 20), klasse: str(w0.klasse, 40), region: str(w0.region, 80), note: str(w0.note, 500) };
+    if (!w.product) throw httpError(400, "Vul in welk product je zoekt.");
+    if (!CATEGORIES.includes(w.category)) throw httpError(400, `Ongeldige categorie bij ${w.product}.`);
+    if (!UNITS.includes(w.unit)) throw httpError(400, `Ongeldige eenheid bij ${w.product}.`);
+    if (w.klasse && !KLASSEN.includes(w.klasse)) throw httpError(400, `Ongeldige klasse bij ${w.product}.`);
+    w.qty = num(w0.qty);
+    if (!(w.qty > 0 && w.qty <= 1e7)) throw httpError(400, `Vul een geldige hoeveelheid in bij ${w.product}.`);
+    const mp = w0.maxPrice === null || w0.maxPrice === "" || w0.maxPrice === undefined ? null : num(w0.maxPrice);
+    if (mp !== null && !(mp > 0 && mp <= 1e6)) throw httpError(400, `Ongeldige maximale prijs bij ${w.product}.`);
+    w.maxPrice = mp;
+    if (!validDate(w0.until)) throw httpError(400, `Kies tot wanneer je ${w.product} zoekt.`);
+    w.until = w0.until;
+    w.status = w0.status === "gesloten" ? "gesloten" : "open";
+    // Nieuwe of heropende vraag: datum mag niet in het verleden liggen
+    if (w.status === "open" && (!was || was.until !== w.until || was.status === "gesloten") && w.until < t) throw httpError(400, `De datum bij ${w.product} ligt in het verleden.`);
+    if (w.status === "gesloten") {
+      w.closedReason = was?.status === "gesloten" ? was.closedReason : WANT_CLOSE.includes(w0.closedReason) ? w0.closedReason : "niet meer nodig";
+      w.closedAt = was?.status === "gesloten" ? was.closedAt : nowIso;
+    }
+    w.createdAt = was?.createdAt || nowIso;
+    const same = was && ["product", "category", "unit", "klasse", "region", "note", "qty", "maxPrice", "until", "status"].every((k) => (was[k] ?? null) === (w[k] ?? null));
+    w.updatedAt = same ? was.updatedAt : nowIso;
+    items[id] = w;
+  }
+  for (const [id, was] of Object.entries(old)) {
+    if (!items[id]) throw httpError(409, `${was.product || "Een vraag"} ontbreekt in wat je browser stuurde. De pagina wordt ververst; probeer het daarna opnieuw.`, { conflict: true });
+  }
+  return { company: str(data.company, 120), contact: str(data.contact, 120), items };
+}
+function describeWants(prev, next) {
+  const out = [], a = prev?.items || {}, b = next?.items || {};
+  const label = (w) => `${num(w.qty)} ${w.unit} ${w.product}`;
+  for (const [id, w] of Object.entries(b)) {
+    const old = a[id];
+    if (!old) out.push(["vraag", `Vraag geplaatst: ${label(w)}${w.maxPrice ? " (max " + euro(w.maxPrice) + ")" : ""}`]);
+    else if (old.status !== "gesloten" && w.status === "gesloten") out.push(["vraag", `Vraag gesloten (${w.closedReason}): ${label(w)}`]);
+    else if (old.status === "gesloten" && w.status !== "gesloten") out.push(["vraag", `Vraag heropend: ${label(w)}`]);
+    else if (old.updatedAt !== w.updatedAt) out.push(["vraag", `Vraag bewerkt: ${label(w)}`]);
+  }
+  return out;
+}
+
+// ---------- vraag en aanbod koppelen: meldingen ----------
+async function allDocs(collection) {
+  const r = await q("SELECT id, data FROM rpb_docs WHERE collection = $1 AND data IS NOT NULL", [collection]);
+  return r.rows;
+}
+const qtyUnit = (n, unit) => `${new Intl.NumberFormat("nl-NL").format(n)} ${unit}`;
+// Nieuwe (of heropende) partij: kopers met een passende vraag krijgen een melding
+async function matchAfterLots(seller, prev, next, base) {
+  const t = today(), a = prev?.items || {};
+  const fresh = Object.entries(next?.items || {}).filter(([id, l]) => lotOpen(l, t) && (!a[id] || !lotOpen(a[id], t)));
+  if (!fresh.length) return;
+  const wants = await allDocs("wants");
+  const names = await q("SELECT company, name FROM rpb_users WHERE id = $1", [seller.id]);
+  const sellerName = next.company || names.rows[0]?.company || names.rows[0]?.name || "Een aanbieder";
+  const jobs = [], told = new Set();
+  for (const [lotId, l] of fresh) {
+    const where = l.location ? `, ophalen ${l.location}` : "";
+    const offer = `${sellerName} biedt ${qtyUnit(l.remaining ?? l.qty, l.unit)} ${l.product}${l.ras ? " " + l.ras : ""} aan voor ${euro(l.price)} per ${UNIT1[l.unit] || l.unit}${where}.`;
+    const ref = !a[lotId] && l.wantRef ? l.wantRef.split(":") : null;
+    if (ref) {
+      const w = wants.find((x) => x.id === ref[0])?.data?.items?.[ref[1]];
+      if (w) { told.add(ref.join(":")); jobs.push(Push.notify(ref[0], "match", { title: `Reactie op je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}`, urgency: "high" }, base)); }
+    }
+    for (const row of wants) {
+      if (row.id === seller.id) continue;
+      for (const [wid, w] of Object.entries(row.data.items || {})) {
+        const key = `${row.id}:${wid}`;
+        if (told.has(key) || told.has(row.id + "|" + lotId) || !wantMatchesLot(w, l, t)) continue;
+        told.add(key); told.add(row.id + "|" + lotId);
+        jobs.push(Push.notify(row.id, "match", { title: `Aanbod past bij je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}` }, base));
+      }
+    }
+  }
+  await Promise.all(jobs.slice(0, 100));
+}
+// Nieuwe (of heropende) vraag: aanbieders met een passende partij krijgen een melding
+async function matchAfterWants(buyer, prev, next, base) {
+  const t = today(), a = prev?.items || {};
+  const fresh = Object.entries(next?.items || {}).filter(([id, w]) => wantOpen(w, t) && (!a[id] || !wantOpen(a[id], t)));
+  if (!fresh.length) return;
+  const lots = await allDocs("lots");
+  const jobs = [], told = new Set();
+  for (const [wid, w] of fresh) {
+    for (const row of lots) {
+      if (row.id === buyer.id || told.has(row.id + "|" + wid)) continue;
+      const hit = Object.values(row.data.items || {}).find((l) => wantMatchesLot(w, l, t));
+      if (!hit) continue;
+      told.add(row.id + "|" + wid);
+      const until = new Intl.DateTimeFormat("nl-NL", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(w.until + "T12:00:00Z"));
+      jobs.push(Push.notify(row.id, "match", {
+        title: "Er wordt gevraagd wat jij hebt",
+        body: `Een koper zoekt ${qtyUnit(w.qty, w.unit)} ${w.product}${w.maxPrice ? " (max " + euro(w.maxPrice) + " per " + (UNIT1[w.unit] || w.unit) + ")" : ""}, vóór ${until}. Je partij ${hit.product} (${qtyUnit(hit.remaining ?? hit.qty, hit.unit)}) past daarbij.`,
+        view: "wanted", want: `${buyer.id}:${wid}`, tag: `w-${wid}`,
+      }, base));
+    }
+  }
+  await Promise.all(jobs.slice(0, 100));
+}
+const UNIT1 = { colli: "collo", kg: "kg", pallets: "pallet", kisten: "kist", zakken: "zak" };
+
 // ---------- wat ziet wie? ----------
 // Een handelaar ziet van anderen niet wie wat geboden heeft of aan wie tegen welke prijs is gegund,
 // alleen de biedingen op zijn eigen partijen en zijn eigen gunningen.
@@ -985,6 +1117,13 @@ function lotsView(me, ownerId, data) {
   }
   return { ...data, items };
 }
+// Gesloten vragen van anderen zijn niet meer interessant (en gaan niemand iets aan)
+function wantsView(me, ownerId, data) {
+  if (!data || me.role === "beheerder" || ownerId === me.id) return data;
+  const items = {};
+  for (const [id, w] of Object.entries(data.items || {})) if (w && w.status !== "gesloten") items[id] = w;
+  return { ...data, items };
+}
 function bidsView(me, bidderId, data) {
   if (!data || me.role === "beheerder" || bidderId === me.id) return data;
   const offers = {};
@@ -994,7 +1133,8 @@ function bidsView(me, bidderId, data) {
 
 // ---------- FoodSource API v1 ----------
 const AI = createAi({ q, httpError, log, today });
-const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES });
+const Push = createPush({ q, log });
+const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES, Push, afterLots: matchAfterLots });
 
 // ---------- routes ----------
 async function route(req, ctx = {}) {
@@ -1381,6 +1521,8 @@ async function route(req, ctx = {}) {
   }
 
   // Mijn account → API-koppelingen: sleutels en webhook
+  // Pushmeldingen op dit toestel aan/uit en keuzes
+  if (a === "push") return Push.route(req, me, parts, readBody, json, httpError, siteUrl(req));
   if (a === "keys" || a === "webhook") { ctx.kick = b === "retry"; return V1.account(req, me, parts, readBody); }
 
   // Alle partijen en biedingen (of alleen wat er sinds 'since' veranderde)
@@ -1395,7 +1537,7 @@ async function route(req, ctx = {}) {
     }
     const docs = r.rows.map((d) => ({
       collection: d.collection, id: d.id, version: Number(d.version) || 0,
-      data: d.collection === "lots" ? lotsView(me, d.id, d.data) : d.collection === "bids" ? bidsView(me, d.id, d.data) : null,
+      data: d.collection === "lots" ? lotsView(me, d.id, d.data) : d.collection === "bids" ? bidsView(me, d.id, d.data) : d.collection === "wants" ? wantsView(me, d.id, d.data) : null,
     }));
     // Per partij alleen het hoogste bod en het aantal biedingen, zonder namen
     const allBids = await q("SELECT data FROM rpb_docs WHERE collection = 'bids' AND data IS NOT NULL");
@@ -1435,6 +1577,7 @@ async function route(req, ctx = {}) {
     const prev = cur.data;
     let clean, ownPhotos = null;
     if (b === "lots") ({ out: clean, ownPhotos } = await normalizeLots(me, prev, data));
+    else if (b === "wants") clean = await normalizeWants(me, prev, data);
     else clean = await normalizeBids(me, prev, data);
     if (Buffer.byteLength(JSON.stringify(clean)) > MAX_DOC_BYTES) throw httpError(413, "Te veel gegevens in één keer. Trek oude partijen of biedingen in.");
     const saved = await writeDocAt(b, me.id, cur, clean, me.id);
@@ -1448,11 +1591,13 @@ async function route(req, ctx = {}) {
       const used = new Set(Object.values(clean.items).flatMap((it) => it.photos || []));
       const cutoff = Date.now() - 6 * 3600000;
       for (const [pid, at] of ownPhotos) if (!used.has(pid) && at.getTime() < cutoff) await q("DELETE FROM rpb_photos WHERE id = $1 AND owner = $2", [pid, me.id]);
-    } else lines = describeBids(prev, clean);
+    } else if (b === "wants") lines = describeWants(prev, clean);
+    else lines = describeBids(prev, clean);
     for (const [kind, detail] of lines.slice(0, 10)) await log(me, kind, detail);
     // Gebeurtenissen voor koppelingen (webhook / GET /api/v1/events): nieuw bod, gunning
     try {
       if (b === "lots") await V1.emitForLots(me, prev, clean, siteUrl(req));
+      else if (b === "wants") await matchAfterWants(me, prev, clean, siteUrl(req));
       else await V1.emitForBids(me, prev, clean, siteUrl(req));
       ctx.kick = true;
     } catch (e) { console.error("events", e); }

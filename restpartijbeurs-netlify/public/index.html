@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="app-version" content="82fdad5884">
+<meta name="app-version" content="8066b44af8">
 <title>Restpartijbeurs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css?v=82fdad5884">
+<link rel="stylesheet" href="/app.css?v=8066b44af8">
 <link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
 <link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
 <link rel="manifest" href="/api/manifest.webmanifest">
@@ -129,6 +129,7 @@
     </div>
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-market" data-view="market" aria-selected="true"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.5L5 4h14l1.5 5.5"/><path d="M3.5 9.5h17v10.5h-17z"/><path d="M9.5 20v-5.5h5V20"/></svg><span class="tab-label">Aanbod</span> <span class="n" id="n-market">0</span></button>
+      <button class="tab" role="tab" id="tab-wanted" data-view="wanted" aria-selected="false"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/><path d="M8 10.5h5M10.5 8v5"/></svg><span class="tab-label">Gevraagd</span> <span class="n" id="n-wanted">0</span></button>
       <button class="tab" role="tab" id="tab-mine" data-view="mine" aria-selected="false"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/></svg><span class="tab-label">Mijn partijen</span> <span class="n" id="n-mine">0</span></button>
       <button class="tab" role="tab" id="tab-bids" data-view="bids" aria-selected="false"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5V4h8.5L21 13.5 13.5 21z"/><circle cx="7.6" cy="8.6" r="1.6"/></svg><span class="tab-label">Mijn biedingen</span> <span class="n" id="n-bids">0</span></button>
       <button class="tab" role="tab" id="tab-admin" data-view="admin" aria-selected="false" hidden><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="tab-label">Beheer</span> <span class="n alert" id="n-pending" hidden>0</span></button>
@@ -255,6 +256,20 @@
       <label class="check show-closed"><input type="checkbox" id="show-closed"> Ook afgesloten partijen</label>
     </div>
     <div id="market"></div>
+  </section>
+
+  <section id="view-wanted" hidden>
+    <div class="want-intro">
+      <p>Kopers zetten hier wat ze zoeken. Heb jij het? Tik op <b>Ik kan leveren</b> en je partij staat meteen klaar, ingevuld met de gegevens uit de vraag.</p>
+    </div>
+    <div class="chips" id="want-chips">
+      <button class="chip" type="button" data-wcat="" aria-pressed="true">Alles</button>
+      <button class="chip" type="button" data-wcat="Groente" aria-pressed="false"><span class="sw Groente"></span>Groente</button>
+      <button class="chip" type="button" data-wcat="Fruit" aria-pressed="false"><span class="sw Fruit"></span>Fruit</button>
+      <button class="chip" type="button" data-wcat="Aardappelen" aria-pressed="false"><span class="sw Aardappelen"></span>Aardappelen</button>
+      <button class="chip" type="button" data-wcat="mine" aria-pressed="false">Mijn vragen</button>
+    </div>
+    <div id="wanted"></div>
   </section>
 
   <section id="view-mine" hidden>
@@ -387,7 +402,7 @@
         <select class="sel" id="log-user" aria-label="Gebruiker"><option value="">Alle gebruikers</option></select>
         <select class="sel" id="log-kind" aria-label="Soort activiteit">
           <option value="">Alle activiteit</option><option value="inloggen">Inloggen</option><option value="account">Aanvragen</option>
-          <option value="partij">Partijen</option><option value="bod">Biedingen</option><option value="gunning">Gunningen</option>
+          <option value="partij">Partijen</option><option value="bod">Biedingen</option><option value="gunning">Gunningen</option><option value="vraag">Vragen</option>
           <option value="betaling">Betalingen</option><option value="beheer">Beheer</option>
         </select>
         <label class="log-date">Van <input class="sel" id="log-from" type="date"></label>
@@ -501,7 +516,7 @@
 
 <dialog id="dlg-lot" class="sheet">
   <form id="form-lot" novalidate>
-    <div class="dlg-head"><h2 id="lot-title" tabindex="-1" autofocus>Partij aanbieden</h2><p>Vul de gegevens van de restpartij in. Alle velden zijn zichtbaar voor kopers.</p></div>
+    <div class="dlg-head"><h2 id="lot-title" tabindex="-1" autofocus>Partij aanbieden</h2><p>Vul de gegevens van de restpartij in. Alle velden zijn zichtbaar voor kopers.</p><p class="lot-want" id="lot-want" hidden></p></div>
     <div class="form">
       <div class="field full ai-strip" id="ai-strip" hidden>
         <div class="ai-strip-row">
@@ -598,6 +613,30 @@
   <div class="lb-count" id="lb-count"></div>
 </dialog>
 
+<dialog id="dlg-want" class="sheet">
+  <form id="form-want" novalidate>
+    <div class="dlg-head"><h2 id="want-title" tabindex="-1" autofocus>Vraag plaatsen</h2><p>Laat aanbieders weten wat je zoekt. Past er een partij bij, dan krijg je een melding.</p></div>
+    <div class="form">
+      <div class="field"><label for="w-product">Wat zoek je?</label><input id="w-product" required placeholder="bijv. Frietaardappelen" list="dl-products"></div>
+      <div class="field"><label for="w-cat">Categorie</label>
+        <select id="w-cat"><option>Groente</option><option>Fruit</option><option>Aardappelen</option></select></div>
+      <div class="field"><label for="w-qty">Hoeveelheid</label>
+        <div class="inline"><input id="w-qty" type="text" inputmode="numeric" autocomplete="off" required placeholder="10">
+        <select id="w-unit" aria-label="Eenheid"><option>colli</option><option>kg</option><option>pallets</option><option>kisten</option><option>zakken</option></select></div></div>
+      <div class="field"><label for="w-klasse">Klasse</label>
+        <select id="w-klasse"><option value="">Maakt niet uit</option><option>Klasse I</option><option>Klasse II</option><option>Industrie / verwerking</option><option>Biologisch Klasse I</option><option>Biologisch Klasse II</option></select></div>
+      <div class="field"><label for="w-price">Maximale prijs per eenheid (€)</label><input id="w-price" type="text" inputmode="decimal" autocomplete="off" placeholder="leeg = in overleg"><span class="hint">Laat leeg als de prijs in overleg is.</span></div>
+      <div class="field"><label for="w-until">Nodig vóór</label><input id="w-until" type="date" required></div>
+      <div class="field full"><label for="w-region">Regio of afleveradres</label><input id="w-region" placeholder="bijv. regio Breda, of ophalen kan in heel Nederland"></div>
+      <div class="field full"><label for="w-note">Toelichting (optioneel)</label><textarea id="w-note" rows="2" maxlength="500" placeholder="bijv. maat 40+, gewassen, voor verwerking"></textarea></div>
+      <div class="field"><label for="w-company">Bedrijfsnaam</label><input id="w-company"></div>
+      <div class="field"><label for="w-phone">Telefoon of e-mail</label><input id="w-phone"></div>
+    </div>
+    <div class="dlg-foot"><span class="err" id="want-err"></span>
+      <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn primary" type="submit" id="want-submit">Plaatsen</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-account">
   <form id="form-account" novalidate>
     <div class="dlg-head"><h2>Mijn account</h2><p id="acc-who"></p></div>
@@ -608,6 +647,29 @@
       <div class="field full" id="acc-sub" hidden><div class="ct-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span id="acc-sub-text"></span><button class="btn primary small" type="button" id="acc-sub-pay" hidden></button></div></div>
       <div class="fieldset-title" id="acc-api-title" hidden>Koppelingen</div>
       <div class="field full" id="acc-api" hidden><div class="ct-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span>Koppel je ERP of voorraadsysteem met de FoodSource API.</span><button class="btn small" type="button" id="acc-api-open">API-koppelingen</button></div></div>
+      <div class="fieldset-title" id="acc-push-title" hidden>Meldingen op dit toestel</div>
+      <div class="field full" id="acc-push" hidden>
+        <div class="ct-card push-card">
+          <p class="push-msg" id="push-msg"></p>
+          <ol class="push-ios" id="push-ios" hidden>
+            <li>Open deze site in Safari en tik op <strong>Deel</strong> <span aria-hidden="true">(vierkantje met pijl omhoog)</span>.</li>
+            <li>Kies <strong>Zet op beginscherm</strong>.</li>
+            <li>Open FoodSource via het nieuwe icoon en kom terug in <strong>Mijn account</strong>.</li>
+          </ol>
+          <div class="push-prefs" id="push-prefs" hidden>
+            <label class="check"><input type="checkbox" data-push="bid"> Nieuw bod op mijn partij</label>
+            <label class="check"><input type="checkbox" data-push="awarded"> Mijn bod gegund</label>
+            <label class="check"><input type="checkbox" data-push="rejected"> Mijn bod niet gegund</label>
+            <label class="check"><input type="checkbox" data-push="match"> Vraag en aanbod passen bij elkaar</label>
+          </div>
+          <div class="push-actions">
+            <button class="btn primary small" type="button" id="push-on" hidden>Meldingen aanzetten</button>
+            <button class="btn small" type="button" id="push-test" hidden>Testmelding sturen</button>
+            <button class="btn small ghost" type="button" id="push-off" hidden>Uitzetten op dit toestel</button>
+          </div>
+          <span class="err" id="push-err"></span>
+        </div>
+      </div>
       <div class="fieldset-title">Code wijzigen (optioneel)</div>
       <div class="field"><label for="a-cur">Huidige code</label><input id="a-cur" type="password" autocomplete="current-password"></div>
       <div class="field"><label for="a-new">Nieuwe code (minstens 12 tekens)</label><input id="a-new" type="password" autocomplete="new-password"></div>
@@ -721,16 +783,18 @@
 <datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
 <datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
 
-<script src="/js/core.js?v=82fdad5884"></script>
-<script src="/js/update.js?v=82fdad5884"></script>
-<script src="/js/market.js?v=82fdad5884"></script>
-<script src="/js/ai.js?v=82fdad5884"></script>
-<script src="/js/account.js?v=82fdad5884"></script>
-<script src="/js/admin.js?v=82fdad5884"></script>
-<script src="/js/payments.js?v=82fdad5884"></script>
-<script src="/js/stats.js?v=82fdad5884"></script>
-<script src="/js/integrations.js?v=82fdad5884"></script>
-<script src="/js/brand.js?v=82fdad5884"></script>
-<script src="/js/start.js?v=82fdad5884"></script>
+<script src="/js/core.js?v=8066b44af8"></script>
+<script src="/js/update.js?v=8066b44af8"></script>
+<script src="/js/market.js?v=8066b44af8"></script>
+<script src="/js/ai.js?v=8066b44af8"></script>
+<script src="/js/account.js?v=8066b44af8"></script>
+<script src="/js/push.js?v=8066b44af8"></script>
+<script src="/js/wants.js?v=8066b44af8"></script>
+<script src="/js/admin.js?v=8066b44af8"></script>
+<script src="/js/payments.js?v=8066b44af8"></script>
+<script src="/js/stats.js?v=8066b44af8"></script>
+<script src="/js/integrations.js?v=8066b44af8"></script>
+<script src="/js/brand.js?v=8066b44af8"></script>
+<script src="/js/start.js?v=8066b44af8"></script>
 </body>
 </html>

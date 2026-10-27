@@ -1,7 +1,8 @@
 // Rooktest FoodSource / Restpartijbeurs – draait na elke release.
 //
 // Productie: alleen kijken (inloggen, aanbod bekijken, API lezen). Er wordt NIETS aangemaakt of gewijzigd.
-// Testomgeving (APP_ENV=test): daarnaast een volledige handel: partij met foto aanbieden, bieden, gunnen, intrekken.
+// Testomgeving (APP_ENV=test): daarnaast een volledige handel: partij met foto aanbieden, bieden, gunnen, intrekken,
+// en vraag en aanbod: koper plaatst een vraag, aanbieder reageert met "Ik kan leveren", koper ziet de reactie.
 // Welke omgeving het is, leest de test zelf uit /api/status; de volledige handel draait nooit op productie.
 //
 // Instellingen (omgevingsvariabelen; in GitHub als "secrets"):
@@ -20,6 +21,7 @@ const acct = (role) => ({ name: process.env[`${P()}_${role}`] || "", code: proce
 const apiKey = () => process.env[`${P()}_API_KEY`] || "";
 const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Europe/Amsterdam" }).replace(/[-:]/g, "").replace(" ", "-").slice(0, 13);
 const PRODUCT = `Rooktest ${stamp}`;
+const WANTED = `Rooktestvraag ${stamp}`;   // uniek woord: past bij geen echte partij of vraag
 
 test.beforeAll(async ({ request }) => {
   expect(BASE, "Zet SMOKE_URL op het adres van de site, bijv. https://restpartijbeurs.netlify.app").toMatch(/^https?:\/\//);
@@ -67,6 +69,24 @@ async function login(page, { name, code }) {
   await expect(page.locator("#view-market")).toBeVisible();
 }
 
+// Partij intrekken via Mijn partijen (liefst met een reden zonder verplichte toelichting)
+async function withdrawLot(page, product) {
+  await page.click("#tab-mine");
+  const panel = page.locator("#mine .panel", { hasText: product });
+  await panel.locator("[data-act=withdraw]").click();
+  await expect(page.locator("#dlg-reason")).toBeVisible();
+  const choices = page.locator("#rs-list label");
+  const n = await choices.count();
+  let picked = false;
+  for (let i = 0; i < n && !picked; i++) {
+    const txt = await choices.nth(i).innerText();
+    if (!/anders/i.test(txt)) { await choices.nth(i).click(); picked = true; }
+  }
+  if (!picked) { await choices.first().click(); await page.fill("#rs-note", "Rooktest"); }
+  await page.click("#rs-ok");
+  await expect(panel).toContainText("Ingetrokken");
+}
+
 // ---------- 1. site, beveiliging en versie ----------
 test("site, beveiliging en versie", async ({ request }) => {
   const home = await request.get(BASE + "/");
@@ -110,7 +130,7 @@ test("koper: inloggen, aanbod bekijken en uitloggen (computer)", async ({ page }
   await login(page, buyer);
   await expect(page.locator("#market")).toBeVisible();
   await expect(page.locator("#market .lot, #market .empty, #market .notice").first()).toBeVisible();
-  for (const tab of ["#tab-mine", "#tab-bids", "#tab-market"]) { await page.click(tab); await expect(page.locator(tab)).toHaveAttribute("aria-selected", "true"); }
+  for (const tab of ["#tab-wanted", "#tab-mine", "#tab-bids", "#tab-market"]) { await page.click(tab); await expect(page.locator(tab)).toHaveAttribute("aria-selected", "true"); }
   // grote foto van de eerste partij met foto moet laden (eerder bug: foto weg uit de database)
   const thumb = page.locator("#market .thumbs button").first();
   if (await thumb.count()) {
@@ -240,21 +260,90 @@ test.describe("volledige handel (alleen testomgeving)", () => {
     test.skip(!ok(), reason());
     const errors = watch(page);
     await login(page, acct("SELLER"));
-    await page.click("#tab-mine");
-    const panel = page.locator("#mine .panel", { hasText: PRODUCT });
-    await panel.locator("[data-act=withdraw]").click();
-    await expect(page.locator("#dlg-reason")).toBeVisible();
-    const choices = page.locator("#rs-list label");
-    // liefst een reden zonder verplichte toelichting
-    const n = await choices.count();
-    let picked = false;
-    for (let i = 0; i < n && !picked; i++) {
-      const txt = await choices.nth(i).innerText();
-      if (!/anders/i.test(txt)) { await choices.nth(i).click(); picked = true; }
-    }
-    if (!picked) { await choices.first().click(); await page.fill("#rs-note", "Rooktest"); }
-    await page.click("#rs-ok");
-    await expect(panel).toContainText("Ingetrokken");
+    await withdrawLot(page, PRODUCT);
+    expect(errors).toEqual([]);
+  });
+});
+
+// ---------- 6b. vraag en aanbod (Gevraagd) – alleen in de testomgeving ----------
+test.describe("vraag en aanbod (alleen testomgeving)", () => {
+  test.describe.configure({ mode: "serial" });
+  const ok = () => ENV === "test" && acct("SELLER").name && acct("BUYER").name;
+  const reason = () => ENV !== "test" ? "Dit is productie: daar wordt niets aangemaakt" : "TEST_SELLER en TEST_BUYER zijn niet allebei ingesteld";
+  const tomorrow = new Date(Date.now() + 36 * 3600000).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+
+  test("koper plaatst een vraag", async ({ page }) => {
+    test.skip(!ok(), reason());
+    const errors = watch(page);
+    await login(page, acct("BUYER"));
+    await page.click("#tab-wanted");
+    await expect(page.locator("#view-wanted")).toBeVisible();
+    await page.click("#btn-new");
+    await expect(page.locator("#dlg-want")).toBeVisible();
+    await page.fill("#w-product", WANTED);
+    await page.selectOption("#w-cat", "Groente");
+    await page.fill("#w-qty", "5");
+    await page.selectOption("#w-unit", "colli");
+    await page.fill("#w-price", "1,00");
+    await page.fill("#w-until", tomorrow);
+    await page.fill("#w-region", "Teststad");
+    await page.fill("#w-note", "Automatische test na release; wordt direct weer gesloten.");
+    if (!(await page.inputValue("#w-company"))) await page.fill("#w-company", "Rooktest");
+    await page.click("#want-submit");
+    await expect(page.locator("#dlg-want"), await page.locator("#want-err").textContent().catch(() => "")).toBeHidden();
+    await expect(page.locator(".want.mine", { hasText: WANTED })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("aanbieder ziet de vraag en reageert met 'Ik kan leveren' (telefoon)", async ({ browser }) => {
+    test.skip(!ok(), reason());
+    const { defaultBrowserType, ...iphone } = devices["iPhone 13"];
+    const ctx = await browser.newContext({ ...iphone, baseURL: BASE });
+    const page = await ctx.newPage();
+    const errors = watch(page);
+    await login(page, acct("SELLER"));
+    await page.click("#tab-wanted");
+    const card = page.locator(".want", { hasText: WANTED });
+    await expect(card, "de vraag van de koper is niet zichtbaar bij de aanbieder").toBeVisible();
+    await card.locator("[data-act=want-supply]").click();
+    await expect(page.locator("#dlg-lot")).toBeVisible();
+    await expect(page.locator("#lot-want")).toBeVisible();
+    await expect(page.locator("#f-product"), "'Ik kan leveren' vult het product niet in").toHaveValue(WANTED);
+    await expect(page.locator("#f-price")).toHaveValue("1,00");
+    await page.fill("#f-loc", "Teststad");
+    await page.fill("#f-note", "Automatische test na release; wordt direct weer ingetrokken.");
+    if (!(await page.inputValue("#f-company"))) await page.fill("#f-company", "Rooktest");
+    await page.click("#lot-submit");
+    await expect(page.locator("#dlg-lot")).toBeHidden();
+    await expect(page.locator(".toast")).toContainText(/koper krijgt bericht/i);
+    await expect(card).toContainText("past al bij deze vraag");
+    expect(errors).toEqual([]);
+    await ctx.close();
+  });
+
+  test("koper ziet de reactie bij zijn vraag en sluit de vraag", async ({ page }) => {
+    test.skip(!ok(), reason());
+    const errors = watch(page);
+    await login(page, acct("BUYER"));
+    await page.click("#tab-wanted");
+    const card = page.locator(".want.mine", { hasText: WANTED });
+    const hit = card.locator(".want-hit", { hasText: "Reactie" });
+    await expect(hit, "de reactie van de aanbieder staat niet bij de vraag").toBeVisible();
+    await hit.click();
+    await expect(page.locator("#dlg-lotdetail")).toBeVisible();
+    await expect(page.locator("#ld-body")).toContainText("Reactie op jouw vraag");
+    await page.click("#dlg-lotdetail [data-close]");
+    await card.locator("[data-act=want-found]").click();
+    await expect(page.locator(".toast")).toContainText("gesloten");
+    await expect(page.locator(".want.mine", { hasText: WANTED })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("aanbieder trekt de reactie-partij in (opruimen)", async ({ page }) => {
+    test.skip(!ok(), reason());
+    const errors = watch(page);
+    await login(page, acct("SELLER"));
+    await withdrawLot(page, WANTED);
     expect(errors).toEqual([]);
   });
 });
