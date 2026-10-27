@@ -19,7 +19,9 @@ const unb64u = (s) => Buffer.from(String(s || ""), "base64url");
 
 let transport = async (url, { headers, body }) => {
   const r = await fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
-  return { status: r.status };
+  // Bij een fout zegt de pushdienst waarom (Apple: {"reason": "BadJwtToken"} enz.); dat komt in het logboek van Netlify
+  const reason = r.status >= 400 ? (await r.text().catch(() => "")).slice(0, 200) : "";
+  return { status: r.status, reason };
 };
 export function setPushTransport(fn) { transport = fn; } // voor tests
 
@@ -75,7 +77,16 @@ export function createPush({ q, log }) {
     keys = { publicKey: b64u(Buffer.concat([Buffer.from([4]), unb64u(jwk.x), unb64u(jwk.y)])), jwk };
     return keys;
   }
+  // Apple: niet vaker dan eens per uur een nieuwe handtekening; we hergebruiken hem 11 uur (geldig 12 uur)
+  const tokens = new Map();
   function jwt(aud, sub, jwk) {
+    const hit = tokens.get(aud + "|" + sub);
+    if (hit && hit.until > Date.now()) return hit.token;
+    const token = signJwt(aud, sub, jwk);
+    tokens.set(aud + "|" + sub, { token, until: Date.now() + 11 * 3600000 });
+    return token;
+  }
+  function signJwt(aud, sub, jwk) {
     const enc = (o) => b64u(Buffer.from(JSON.stringify(o)));
     const data = `${enc({ typ: "JWT", alg: "ES256" })}.${enc({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub })}`;
     const key = crypto.createPrivateKey({ key: jwk, format: "jwk" });
@@ -96,8 +107,10 @@ export function createPush({ q, log }) {
     };
     try {
       const r = await transport(url, { headers, body });
-      if (r.status === 404 || r.status === 410) return { gone: true };
-      return { ok: r.status >= 200 && r.status < 300, status: r.status };
+      if (r.status === 404 || r.status === 410) { console.log("push", new URL(url).hostname, r.status, "toestel afgemeld bij de pushdienst"); return { gone: true }; }
+      const ok = r.status >= 200 && r.status < 300;
+      console.log("push", new URL(url).hostname, r.status, ok ? "ok" : r.reason || "");
+      return { ok, status: r.status, reason: r.reason };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
@@ -107,14 +120,14 @@ export function createPush({ q, log }) {
     const r = await q(`SELECT p.* FROM rpb_push p JOIN rpb_users u ON u.id = p.user_id
       WHERE p.user_id = $1 AND u.active = TRUE AND u.pending = FALSE`, [userId]);
     const rows = r.rows.filter((x) => (x.prefs || DEFAULT_PREFS)[kind] !== false);
-    if (!rows.length) return 0;
+    if (!rows.length) { console.log(`push: geen toestel met meldingen aan voor ${userId} (${kind}; ${r.rows.length} toestel(len) aangemeld)`); return 0; }
     const out = await Promise.all(rows.map((row) => sendTo(row, msg, base).catch((e) => ({ ok: false, error: e.message }))));
     let sent = 0;
     for (let i = 0; i < rows.length; i++) {
       if (out[i].gone) await q("DELETE FROM rpb_push WHERE id = $1", [rows[i].id]);
       else if (out[i].ok) { sent++; await q("UPDATE rpb_push SET last_ok_at = $2, fails = 0 WHERE id = $1", [rows[i].id, new Date()]); }
       else {
-        console.error("push", out[i].status || out[i].error);
+        console.error("push mislukt", out[i].status || out[i].error, out[i].reason || "");
         // Na 20 mislukte pogingen op rij is het toestel waarschijnlijk weg
         await q("UPDATE rpb_push SET fails = fails + 1 WHERE id = $1", [rows[i].id]);
         await q("DELETE FROM rpb_push WHERE id = $1 AND fails >= 20", [rows[i].id]);
@@ -229,7 +242,10 @@ export function createPush({ q, log }) {
       const r = await sendTo(row, { title: "Testmelding", body: "Pushmeldingen werken op dit toestel.", view: "", tag: "test" }, base);
       console.log("push test", new URL(row.endpoint).hostname, r.status || r.error || (r.gone ? "gone" : ""));
       if (r.gone) { await q("DELETE FROM rpb_push WHERE id = $1", [row.id]); throw httpError(410, "Dit toestel is niet meer aangemeld. Zet meldingen opnieuw aan."); }
-      if (!r.ok) throw httpError(502, "De pushdienst nam de melding niet aan. Probeer het later opnieuw.");
+      if (!r.ok) {
+        const why = (String(r.reason || "").match(/"reason"\s*:\s*"([^"]+)"/) || [])[1] || r.error || "";
+        throw httpError(502, `De pushdienst nam de melding niet aan (${r.status || "geen antwoord"}${why ? " " + why : ""}). Probeer het later opnieuw; blijft het misgaan, stuur deze tekst naar de beheerder.`);
+      }
       return json(200, { ok: true });
     }
     throw httpError(404, "Onbekend verzoek.");
