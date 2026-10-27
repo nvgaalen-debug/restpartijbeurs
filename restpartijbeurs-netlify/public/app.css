@@ -679,3 +679,33 @@ dialog.supply { width: min(560px, calc(100vw - 24px)); }
 .sup-txt b { overflow-wrap: anywhere; }
 .sup-txt .want-tag { justify-self: start; margin-top: 0; }
 .sup-txt .sub { font-size: 13px; color: var(--muted); }
+.sup-why { justify-self: start; font-size: 11.5px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border-radius: 99px; padding: 1px 8px; }
+
+/* Biedingen op de telefoon: kaartjes onder elkaar, knoppen altijd in beeld (geen zijwaarts schuiven) */
+@media (max-width: 640px) {
+  table.bid-cards, table.bid-cards tbody { display: block; width: 100%; }
+  table.bid-cards thead { display: none; }
+  table.bid-cards tr { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  table.bid-cards tr:last-child { border-bottom: 0; }
+  table.bid-cards td { display: block; padding: 0; border: 0; text-align: left; min-width: 0; }
+  table.bid-cards td.bc-who { grid-column: 1; grid-row: 1; }
+  table.bid-cards td.bc-status { grid-column: 2; grid-row: 1; text-align: right; }
+  table.bid-cards td[data-label] { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px; }
+  table.bid-cards td[data-label]::before { content: attr(data-label); color: var(--muted); font-weight: 500; }
+  table.bid-cards td[data-label] .sub { text-align: right; }
+  table.bid-cards td[data-label="Prijs"], table.bid-cards td[data-label="Jouw bod"] { flex-wrap: wrap; }
+  table.bid-cards td.bc-act { grid-column: 1 / -1; margin-top: 4px; }
+  table.bid-cards td.bc-act .actions { justify-content: stretch !important; }
+  table.bid-cards td.bc-act .btn { flex: 1 1 0; min-height: 40px; }
+}
+.mine-filter { margin: 0 0 12px; }
+.mine-filter .chip .n { font-size: 12px; opacity: .7; }
+@media (max-width: 600px) { .mine-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); } .mine-filter .chip { justify-content: center; padding: 8px 4px; } }
+/* Mijn partijen: hoeveel is gegund, hoeveel nog beschikbaar */
+.award { margin-top: 8px; width: 460px; max-width: 100%; }
+.award-bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.award-bar span { display: block; height: 100%; background: var(--ok); border-radius: 99px; }
+.award-bar.closed { opacity: .7; }
+.award-txt { font-size: 13.5px; color: var(--muted); margin-top: 5px; }
+.award-txt .award-done { color: var(--ok); font-weight: 600; }
+.award-txt b { color: var(--ink); }

@@ -175,7 +175,7 @@ document.addEventListener("click", async (e) => {
     const w = allWants().find((x) => x.key === t.dataset.want);
     if (!w) return;
     // Eerst je eigen lopende partijen; alleen als je niets in het aanbod hebt meteen een nieuwe partij
-    if (myOpenLots().length) return openSupply(w);
+    if (sameProductLots(w).length) return openSupply(w);
     return newLotForWant(w);
   }
   if (act === "supply-lot") {
@@ -192,6 +192,8 @@ document.addEventListener("click", async (e) => {
   }
   if (act === "supply-new") { const w = S.supplyWant; dlgSupply.close(); if (w) newLotForWant(w); }
 });
+// Alleen eigen partijen van hetzelfde product (bloemkool-vraag → geen bananen)
+const sameProductLots = (w) => myOpenLots().filter((l) => productMatches(w.product, l.product, l.ras, w.category !== l.category));
 function myOpenLots() {
   const d = myLotsDoc(); if (!d) return [];
   return Object.entries(d.items || {}).map(([id, it]) => ({ ...it, id, sellerId: S.me, company: it.company || d.company || "" })).filter((l) => !lotState(l).closed);
@@ -201,11 +203,12 @@ const dlgSupply = $("#dlg-supply");
 function openSupply(w) {
   S.supplyWant = w;
   $("#sup-sub").textContent = `${w.company || "Een koper"} zoekt ${num.format(w.qty)} ${w.unit} ${w.product}${w.klasse ? " (" + w.klasse + ")" : ""}${w.maxPrice > 0 ? `, max ${euro.format(w.maxPrice)} per ${unitSingular(w.unit)}` : ", prijs in overleg"}${w.region ? ` · ${w.region}` : ""}.`;
-  const lots = myOpenLots().map((l) => ({ l, fit: wantMatchesLot(w, l), done: !!(l.offeredTo?.[w.key] || l.wantRef === w.key) }))
+  const lots = sameProductLots(w).map((l) => ({ l, fit: wantMatchesLot(w, l), done: !!(l.offeredTo?.[w.key] || l.wantRef === w.key),
+      why: [w.klasse && w.klasse !== l.klasse ? "Andere klasse" : "", !priceFits(w, l) ? "Boven de maximale prijs" : ""].filter(Boolean).join(" · ") }))
     .sort((a, b) => (b.fit - a.fit) || (b.l.createdAt || "").localeCompare(a.l.createdAt || ""));
-  $("#sup-list").innerHTML = lots.map(({ l, fit, done }) => `<div class="sup-item${fit ? " fit" : ""}">
+  $("#sup-list").innerHTML = lots.map(({ l, fit, done, why }) => `<div class="sup-item${fit ? " fit" : ""}">
       ${validPhotos(l)[0] ? `<img src="${photoUrl(validPhotos(l)[0])}" alt="" loading="lazy">` : `<span class="sup-noimg sw ${esc(l.category)}"></span>`}
-      <div class="sup-txt"><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${fit ? '<span class="want-tag">Past bij de vraag</span>' : ""}
+      <div class="sup-txt"><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${fit ? '<span class="want-tag">Past bij de vraag</span>' : why ? `<span class="sup-why">${esc(why)}</span>` : ""}
         <span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${euro.format(l.price)} per ${esc(unitSingular(l.unit))}${l.location ? " · " + esc(l.location) : ""}</span></div>
       ${done ? `<span class="pill ok">Aangeboden</span>` : `<button class="btn small${fit ? " primary" : ""}" type="button" data-act="supply-lot" data-lot="${esc(l.id)}">Aanbieden</button>`}
     </div>`).join("");

@@ -157,12 +157,26 @@ function renderMine() {
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   $("#n-mine").textContent = lots.filter((l) => !lotState(l).closed).length;
   if (!lots.length) {
+    $("#mine-filter").innerHTML = "";
     box.innerHTML = `<div class="empty" style="grid-template-columns:1fr"><div><h2>Je hebt nog niets aangeboden</h2>
       <p>Partijen die je aanbiedt verschijnen hier, met alle biedingen eronder.</p>
       ${S.canWrite !== false && S.me ? `<button class="btn primary" type="button" data-act="new">+ Partij aanbieden</button>` : ""}</div></div>`;
     return;
   }
-  box.innerHTML = lots.map((l) => {
+  // Filter: alle, nog beschikbaar (open), of (deels) gegund
+  const F = {
+    all: { label: "Alle", ok: () => true },
+    open: { label: "Beschikbaar", ok: (l) => !lotState(l).closed },
+    awarded: { label: "Gegund", ok: (l) => Object.keys(l.accepted || {}).length > 0 },
+  };
+  if (!F[S.mineFilter]) { let v = ""; try { v = localStorage.getItem("rpb-mine-filter") || ""; } catch {} S.mineFilter = F[v] ? v : "all"; }
+  $("#mine-filter").innerHTML = Object.entries(F).map(([k, f]) => `<button class="chip" type="button" data-act="mine-filter" data-f="${k}" aria-pressed="${S.mineFilter === k}">${f.label} <span class="n">${lots.filter(f.ok).length}</span></button>`).join("");
+  const shown = lots.filter(F[S.mineFilter].ok);
+  if (!shown.length) {
+    box.innerHTML = `<div class="notice">${S.mineFilter === "awarded" ? "Je hebt nog geen partijen gegund." : "Je hebt geen partijen die nog beschikbaar zijn."}</div>`;
+    return;
+  }
+  box.innerHTML = shown.map((l) => {
     const st = lotState(l);
     const bids = bidsFor(l.id);
     const accepted = l.accepted || {};
@@ -173,26 +187,31 @@ function renderMine() {
       const acc = accepted[b.bidderId];
       const rej = rejected[b.bidderId];
       const canAct = !st.closed && !acc && !rej;
-      const status = acc ? `<span class="pill ok">Gegund ${num.format(acc.qty)}</span>` : rej ? `<span class="pill off">Afgewezen</span>` : st.closed ? `<span class="pill off">Gesloten</span>` : `<span class="pill acc">Open</span>`;
+      const status = acc ? `<span class="pill ok">Gegund ${num.format(acc.qty)} ${esc(l.unit)}</span>` : rej ? `<span class="pill off">Afgewezen</span>` : st.closed ? `<span class="pill off">Gesloten</span>` : `<span class="pill acc">Open</span>`;
       return `<tr>
-        <td>${esc(b.company) || "Onbekend"}${b.contact ? `<div class="sub">${esc(b.contact)}</div>` : ""}${b.note ? `<div class="sub">“${esc(b.note)}”</div>` : ""}</td>
-        <td class="num">${euro.format(b.price)}<div class="sub">${b.price >= l.price ? "≥ vraagprijs" : Math.round((1 - b.price / l.price) * 100) + "% onder vraag"}</div></td>
-        <td class="num">${num.format(b.qty)} ${esc(l.unit)}</td>
-        <td class="num">${euro.format(b.price * Math.min(b.qty, rem || b.qty))}</td>
-        <td>${status}</td>
-        <td class="num"><div class="actions" style="justify-content:flex-end">${canAct ? `<button class="btn primary small" type="button" data-act="accept" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Accepteren</button><button class="btn small" type="button" data-act="reject" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Afwijzen</button>` : ""}<button class="btn small${acc ? " primary" : ""}" type="button" data-act="contact-bidder" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Contact</button></div></td>
+        <td class="bc-who">${esc(b.company) || "Onbekend"}${b.contact ? `<div class="sub">${esc(b.contact)}</div>` : ""}${b.note ? `<div class="sub">“${esc(b.note)}”</div>` : ""}</td>
+        <td class="num" data-label="Prijs">${euro.format(b.price)}<div class="sub">${b.price >= l.price ? "≥ vraagprijs" : Math.round((1 - b.price / l.price) * 100) + "% onder vraag"}</div></td>
+        <td class="num" data-label="Hoeveelheid">${num.format(b.qty)} ${esc(l.unit)}</td>
+        <td class="num" data-label="Totaal">${euro.format(b.price * Math.min(b.qty, rem || b.qty))}</td>
+        <td class="bc-status">${status}</td>
+        <td class="num bc-act"><div class="actions" style="justify-content:flex-end">${canAct ? `<button class="btn primary small" type="button" data-act="accept" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Accepteren</button><button class="btn small" type="button" data-act="reject" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Afwijzen</button>` : ""}<button class="btn small${acc ? " primary" : ""}" type="button" data-act="contact-bidder" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Contact</button></div></td>
       </tr>`;
     }).join("");
     return `<div class="panel">
       <div class="panel-head">
         <div class="panel-title">${validPhotos(l).length ? `<img class="panel-thumb" src="${photoUrl(validPhotos(l)[0])}" alt="" loading="lazy" data-act="photo" data-seller="${esc(S.me)}" data-lot="${esc(l.id)}" data-i="0">` : ""}<div style="min-width:0"><h3>${esc(l.product)}${l.ras ? ` <span style="font-weight:500;color:var(--muted)">${esc(l.ras)}</span>` : ""}</h3>
-          <div class="meta">${num.format(rem)} van ${num.format(l.qty)} ${esc(l.unit)} beschikbaar · vraagprijs ${euro.format(l.price)} · ${soldQty ? `${num.format(soldQty)} gegund · ` : ""}<span class="pill ${st.cls}">${st.label}</span>${l.status === "ingetrokken" && l.withdrawReason ? ` <span class="sub">Reden: ${esc(reasonText(l.withdrawReason))}${l.withdrawReason.by === "beheer" ? " (door beheer)" : ""}</span>` : ""}</div></div></div>
+          <div class="meta">${soldQty ? `${num.format(l.qty)} ${esc(l.unit)} aangeboden` : `${num.format(rem)} van ${num.format(l.qty)} ${esc(l.unit)} beschikbaar`} · vraagprijs ${euro.format(l.price)} · <span class="pill ${st.cls}">${st.label}</span>${l.status === "ingetrokken" && l.withdrawReason ? ` <span class="sub">Reden: ${esc(reasonText(l.withdrawReason))}${l.withdrawReason.by === "beheer" ? " (door beheer)" : ""}</span>` : ""}</div>${soldQty > 0 ? (() => {
+            const pct = Math.max(0, Math.min(100, Math.round(soldQty / (soldQty + Math.max(rem, 0)) * 100)));
+            const restTxt = rem <= 0 ? "alles gegund" : st.closed ? `${num.format(rem)} ${esc(l.unit)} niet meer te koop` : `<b>${num.format(rem)} ${esc(l.unit)}</b> nog beschikbaar`;
+            return `<div class="award" data-pct="${pct}"><div class="award-bar${st.closed && rem > 0 ? " closed" : ""}" role="img" aria-label="${pct}% gegund"><span style="width:${pct}%"></span></div>
+              <div class="award-txt"><span class="award-done">${num.format(soldQty)} ${esc(l.unit)} gegund</span> · ${restTxt}</div></div>`;
+          })() : ""}</div></div>
         <div class="actions">
           ${l.status === "ingetrokken" ? `<button class="btn small" type="button" data-act="reopen" data-lot="${esc(l.id)}">Heropenen</button>`
             : st.key !== "sold" ? `<button class="btn small" type="button" data-act="edit" data-lot="${esc(l.id)}">Bewerken</button><button class="btn small" type="button" data-act="withdraw" data-lot="${esc(l.id)}">Intrekken</button>` : ""}
         </div>
       </div>
-      ${bids.length ? `<div class="tablewrap"><table class="bids"><thead><tr><th>Bieder</th><th class="num">Prijs</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${bids.length ? `<div class="tablewrap"><table class="bids bid-cards"><thead><tr><th>Bieder</th><th class="num">Prijs</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="nobids">Nog geen biedingen op deze partij.</div>`}
     </div>`;
   }).join("");
@@ -218,19 +237,18 @@ function renderBids() {
       <button class="btn" type="button" data-act="goto-market">Naar het aanbod</button></div></div>`;
     return;
   }
-  box.innerHTML = `<div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Partij</th><th class="num">Jouw bod</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>
+  box.innerHTML = `<div class="panel"><div class="tablewrap"><table class="bids bid-cards"><thead><tr><th>Partij</th><th class="num">Jouw bod</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>
     ${items.map(({ lotId, o, l, status }) => {
       const sm = l ? bidSummary(lotId) : null;
       const top = sm && sm.n ? { price: sm.top } : null;
       const winning = top && o.price >= top.price;
       return `<tr>
-        <td><b>${esc(l ? l.product : o.product || "Partij")}</b>${l ? `<div class="sub">${esc(l.company)}${l.contact ? " · " + esc(l.contact) : ""}</div>` : ""}</td>
-        <td class="num">${euro.format(o.price)}${status.open && top ? `<div class="sub">${winning ? "Hoogste bod" : "Hoogste: " + euro.format(top.price)}</div>` : ""}</td>
-        <td class="num">${num.format(o.qty)} ${esc(l ? l.unit : "")}</td>
-        <td class="num">${euro.format(o.price * o.qty)}</td>
-        <td><span class="pill ${status.cls}">${status.label}</span></td>
-        <td class="num">${status.open ? `<div class="actions" style="justify-content:flex-end"><button class="btn small" type="button" data-act="bid" data-lot="${esc(lotId)}">Wijzigen</button><button class="btn small ghost" type="button" data-act="retract" data-lot="${esc(lotId)}">Intrekken</button></div>`
-          : `<button class="btn small ghost" type="button" data-act="retract" data-lot="${esc(lotId)}">Verwijderen</button>`}</td>
+        <td class="bc-who"><b>${esc(l ? l.product : o.product || "Partij")}</b>${l ? `<div class="sub">${esc(l.company)}${l.contact ? " · " + esc(l.contact) : ""}</div>` : ""}</td>
+        <td class="num" data-label="Jouw bod">${euro.format(o.price)}${status.open && top ? `<div class="sub">${winning ? "Hoogste bod" : "Hoogste: " + euro.format(top.price)}</div>` : ""}</td>
+        <td class="num" data-label="Hoeveelheid">${num.format(o.qty)} ${esc(l ? l.unit : "")}</td>
+        <td class="num" data-label="Totaal">${euro.format(o.price * o.qty)}</td>
+        <td class="bc-status"><span class="pill ${status.cls}">${status.label}</span></td>
+        <td class="num bc-act"><div class="actions" style="justify-content:flex-end">${status.open ? `<button class="btn small" type="button" data-act="bid" data-lot="${esc(lotId)}">Wijzigen</button>` : ""}${l ? `<button class="btn small${status.cls === "ok" ? " primary" : ""}" type="button" data-act="contact-seller" data-lot="${esc(lotId)}">Contact</button>` : ""}<button class="btn small ghost" type="button" data-act="retract" data-lot="${esc(lotId)}">${status.open ? "Intrekken" : "Verwijderen"}</button></div></td>
       </tr>`;
     }).join("")}</tbody></table></div></div>`;
 }
@@ -397,6 +415,24 @@ function openContact(sellerId, lotId) {
     sub: `Over ${l.product}${l.ras ? " · " + l.ras : ""}, ${num.format(rem)} ${l.unit} à ${euro.format(l.price)}.`,
     msg: `Goedendag,\n\nIk heb interesse in uw restpartij ${l.product}${l.ras ? " (" + l.ras + ")" : ""}: ${num.format(rem)} ${l.unit} à ${euro.format(l.price)} per ${unitSingular(l.unit)}, gezien op ${(S.settings && S.settings.siteName) || "de Restpartijbeurs"}. Is de partij nog beschikbaar?\n\nMet vriendelijke groet,\n${me}`,
     subject: `Restpartij ${l.product}${l.ras ? " " + l.ras : ""}`,
+  });
+}
+// Koper → aanbieder: vanuit Mijn biedingen (vooral na een gunning: ophalen en betalen afspreken)
+function openContactSeller(lotId) {
+  const l = allLots().find((x) => x.id === lotId);
+  const o = myBidDoc()?.offers?.[lotId];
+  if (!l || !o) return;
+  const acc = l.accepted?.[S.me];
+  const me = S.user ? S.user.name + (S.user.company ? ", " + S.user.company : "") : "";
+  const what = `${l.product}${l.ras ? " (" + l.ras + ")" : ""}`;
+  const body = acc
+    ? `U heeft mij ${num.format(acc.qty)} ${l.unit} ${what} à ${euro.format(acc.price)} per ${unitSingular(l.unit)} gegund, dank u wel. Graag stem ik het ophalen${l.location ? " in " + l.location : ""} en de betaling met u af. Wanneer schikt het u?`
+    : `Ik heb op uw partij ${what} geboden: ${num.format(o.qty)} ${l.unit} à ${euro.format(o.price)} per ${unitSingular(l.unit)}. Ik wil het graag even met u over mijn bod hebben.`;
+  openContactWith({
+    company: l.company || "Aanbieder", contact: l.contact, who: "aanbieder",
+    sub: `Over je bod op ${l.product}${l.ras ? " · " + l.ras : ""}: ${num.format(acc ? acc.qty : o.qty)} ${l.unit} à ${euro.format(acc ? acc.price : o.price)}${acc ? " (gegund)" : ""}.`,
+    msg: `Goedendag,\n\n${body}\n\nMet vriendelijke groet,\n${me}`,
+    subject: `${acc ? "Gegunde partij" : "Mijn bod op"} ${l.product}${l.ras ? " " + l.ras : ""}`,
   });
 }
 // Aanbieder → bieder: over een bod op een eigen partij (open, gegund of afgewezen)
@@ -566,6 +602,8 @@ document.addEventListener("click", async (e) => {
   if (act === "lot-detail") return openLotDetail(t.dataset.seller, lotId);
   if (act === "photo") return openLightbox(t.dataset.seller, lotId, t.dataset.i);
   if (act === "contact") return openContact(t.dataset.seller, lotId);
+  if (act === "contact-seller") return openContactSeller(lotId);
+  if (act === "mine-filter") { S.mineFilter = t.dataset.f; try { localStorage.setItem("rpb-mine-filter", S.mineFilter); } catch {} return renderMine(); }
   if (act === "contact-bidder") return openContactBidder(lotId, bidder);
   if (act === "new") return openLotDialog();
   if (act === "bid") return openBidDialog(lotId);

@@ -26,7 +26,7 @@ import { createV1 } from "../lib/foodsource-v1.mjs";
 import { createAi, aiConfigured, aiModel } from "../lib/ai-photo.mjs";
 import { createPush } from "../lib/push.mjs";
 import { createCleanup, lotsCsv } from "../lib/cleanup.mjs";
-import { wantMatchesLot, lotOpen, wantOpen } from "../lib/match.mjs";
+import { wantMatchesLot, lotOpen, wantOpen, productMatch } from "../lib/match.mjs";
 
 export const config = { path: "/api/*" };
 
@@ -938,7 +938,13 @@ async function normalizeLots(me, prev, data) {
     const offered = { ...(was?.offeredTo || {}) };
     for (const k of Object.keys(it0.offeredTo && typeof it0.offeredTo === "object" && !Array.isArray(it0.offeredTo) ? it0.offeredTo : {})) {
       if (Object.keys(offered).length >= 50) break;
-      if (!offered[k] && /^[A-Za-z0-9_-]{1,40}:[A-Za-z0-9_-]{1,40}$/.test(k) && !k.startsWith(me.id + ":")) offered[k] = { at: nowIso };
+      if (offered[k] || !/^[A-Za-z0-9_-]{1,40}:[A-Za-z0-9_-]{1,40}$/.test(k) || k.startsWith(me.id + ":")) continue;
+      // Alleen een partij van het gevraagde product (wie bloemkool zoekt, heeft niets aan bananen)
+      const [buyer, wid] = k.split(":");
+      const want = (await readDoc("wants", buyer)).data?.items?.[wid];
+      if (!want) throw httpError(409, "Deze vraag bestaat niet meer.", { conflict: true });
+      if (!productMatch(want.product, it.product, it.ras, want.category !== it.category)) throw httpError(400, `${name} past niet bij de vraag naar ${want.product}. Bied een partij van dat product aan.`);
+      offered[k] = { at: nowIso };
     }
     if (Object.keys(offered).length) it.offeredTo = offered;
     // Foto's: alleen eigen foto's, maximaal 3
