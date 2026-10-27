@@ -1,14 +1,16 @@
 # Rooktest FoodSource na elke release.
-# Dit bestand hoort in de repository op: .github/workflows/rooktest.yml (in de hoofdmap, naast restpartijbeurs-netlify).
+# Dit bestand hoort in de repository op: .github/workflows/rooktest.yml
 #
+# Voorlopig wordt uitsluitend de testomgeving getest.
 # Wanneer:
 #  - na elke upload (push) naar main: wacht tot de testomgeving de nieuwe versie toont en test die volledig;
-#  - met de hand: Actions → "Rooktest na release" → Run workflow (kies test of productie);
-#  - elke ochtend: productie, alleen kijken.
-# Instellen (GitHub → Settings → Secrets and variables → Actions):
-#  Variables: SMOKE_URL_TEST, SMOKE_URL_PROD
-#  Secrets:   TEST_SELLER, TEST_SELLER_CODE, TEST_BUYER, TEST_BUYER_CODE, PROD_BUYER, PROD_BUYER_CODE
-#             (optioneel) TEST_API_KEY, PROD_API_KEY
+#  - met de hand: Actions -> "Rooktest na release" -> Run workflow;
+#  - elke ochtend: testomgeving.
+# Instellen (GitHub -> Settings -> Secrets and variables -> Actions):
+#  Variables: SMOKE_URL_TEST
+#  Secrets:   TEST_SELLER, TEST_SELLER_CODE, TEST_BUYER, TEST_BUYER_CODE
+#             (optioneel) TEST_API_KEY
+
 name: Rooktest na release
 
 on:
@@ -17,17 +19,12 @@ on:
     paths: ["restpartijbeurs-netlify/**"]
   workflow_dispatch:
     inputs:
-      omgeving:
-        description: "Welke omgeving testen?"
-        type: choice
-        options: [test, productie]
-        default: test
       ai:
         description: "Ook de AI-invulhulp testen (testomgeving; kost minder dan een cent)"
         type: boolean
         default: false
   schedule:
-    - cron: "17 5 * * *"   # elke ochtend rond 07:17 (Nederlandse zomertijd), productie, alleen kijken
+    - cron: "17 5 * * *" # dagelijks 05:17 UTC
 
 concurrency:
   group: rooktest
@@ -41,36 +38,43 @@ jobs:
       run:
         working-directory: restpartijbeurs-netlify/tests
     env:
-      SMOKE_URL: ${{ (github.event_name == 'schedule' || inputs.omgeving == 'productie') && vars.SMOKE_URL_PROD || vars.SMOKE_URL_TEST }}
+      SMOKE_URL: ${{ vars.SMOKE_URL_TEST }}
       TEST_SELLER: ${{ secrets.TEST_SELLER }}
       TEST_SELLER_CODE: ${{ secrets.TEST_SELLER_CODE }}
       TEST_BUYER: ${{ secrets.TEST_BUYER }}
       TEST_BUYER_CODE: ${{ secrets.TEST_BUYER_CODE }}
-      PROD_BUYER: ${{ secrets.PROD_BUYER }}
-      PROD_BUYER_CODE: ${{ secrets.PROD_BUYER_CODE }}
       TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
-      PROD_API_KEY: ${{ secrets.PROD_API_KEY }}
       SMOKE_AI: ${{ inputs.ai && '1' || '0' }}
-      SMOKE_EXPECT_ENV: ${{ (github.event_name == 'schedule' || inputs.omgeving == 'productie') && 'prod' || 'test' }}
+      SMOKE_EXPECT_ENV: test
       CI: "1"
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Welk adres?
         run: |
-          if [ -z "$SMOKE_URL" ]; then echo "::error::Zet de variabelen SMOKE_URL_TEST en SMOKE_URL_PROD (Settings → Secrets and variables → Actions → Variables)"; exit 1; fi
-          echo "Test: $SMOKE_URL"
+          if [ -z "$SMOKE_URL" ]; then
+            echo "::error::Zet SMOKE_URL_TEST in Settings -> Secrets and variables -> Actions -> Variables"
+            exit 1
+          fi
+          echo "Testomgeving: $SMOKE_URL"
+
       - name: Wachten tot Netlify de nieuwe versie heeft gepubliceerd
         if: github.event_name == 'push'
         run: node wacht-op-release.mjs
+
       - name: Playwright installeren
         run: |
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
+
       - name: Rooktest
         run: npx playwright test
+
       - name: Rapport bewaren
         if: always()
         uses: actions/upload-artifact@v4
