@@ -64,7 +64,10 @@ function getPool() {
   // sslmode uit de URL halen, anders overschrijft pg onze ssl-instelling
   const clean = url.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
   // Time-outs: liever een nette foutmelding dan een functie die blijft hangen
-  const options = [PG_SCHEMA ? `-c search_path=${PG_SCHEMA}` : "", "-c statement_timeout=10000"].filter(Boolean).join(" ");
+  // idle_session_timeout: de database sluit zelf een verbinding die 10 s niets doet. Nodig omdat Netlify een
+  // serverfunctie tussen verzoeken bevriest; die kan zijn verbinding dan niet sluiten en houdt hem minutenlang
+  // vast (te veel verbindingen = fout 53300). Oudere Postgres (< 14) kent dit niet: dan zonder (zie q()).
+  const options = [PG_SCHEMA ? `-c search_path=${PG_SCHEMA}` : "", "-c statement_timeout=10000", idleTimeoutOk ? "-c idle_session_timeout=10000" : ""].filter(Boolean).join(" ");
   // Eén verbinding per serverfunctie: Netlify draait per functie maar één verzoek tegelijk, en een functie die
   // even niets doet houdt zijn verbindingen vast. Met meer per functie raakt de (gratis) database vol (fout 53300).
   const max = Math.min(5, Math.max(1, Number(process.env.PG_POOL_MAX) || 1));
@@ -74,11 +77,18 @@ function getPool() {
 }
 
 // Database even vol of aan het herstarten? Twee keer kort opnieuw proberen voordat we een fout geven.
-const RETRY_CODES = new Set(["53300", "57P03", "08006", "08001"]);
+// 57P05 = verbinding door de database gesloten na idle_session_timeout: gewoon opnieuw met een nieuwe verbinding.
+const RETRY_CODES = new Set(["53300", "57P03", "57P05", "08006", "08001"]);
+let idleTimeoutOk = process.env.PG_IDLE_TIMEOUT !== "off";
 async function q(text, params = []) {
   for (let i = 0; ; i++) {
     try { return await getPool().query(text, params); }
     catch (e) {
+      // Postgres ouder dan 14: onbekende instelling idle_session_timeout → pool opnieuw maken zonder
+      if (idleTimeoutOk && /idle_session_timeout/.test(e?.message || "") && pool) {
+        console.log("database kent idle_session_timeout niet; verder zonder");
+        idleTimeoutOk = false; const old = pool; pool = null; old.end().catch(() => {}); continue;
+      }
       const retry = RETRY_CODES.has(e?.code) || /timeout exceeded when trying to connect|Connection terminated unexpectedly/i.test(e?.message || "");
       if (!retry || i >= 2) throw e;
       console.log("database bezet, opnieuw over", 300 * (i + 1) * (i + 1), "ms:", e.code || e.message);
@@ -1390,7 +1400,7 @@ async function route(req, ctx = {}) {
     const row = r.rows[0];
     if (!row) {
       if (key === "logo") throw httpError(404, "Er is geen logo ingesteld.");
-      return new Response(null, { status: 302, headers: { location: `/icons/${b}`, "cache-control": "public, max-age=300" } });
+      return new Response(null, { status: 302, headers: { location: `/icons/${b}`, "cache-control": "public, max-age=300", "netlify-cdn-cache-control": "public, max-age=300, durable" } });
     }
     const v = url.searchParams.get("v"), cur = (await getSettings()).logoVersion;
     const forever = v && v === cur;
@@ -1399,7 +1409,8 @@ async function route(req, ctx = {}) {
       headers: {
         "content-type": row.mime,
         "cache-control": forever ? "public, max-age=31536000, immutable" : "public, max-age=300",
-        ...(forever ? { "netlify-cdn-cache-control": "public, max-age=31536000, immutable, durable" } : {}),
+        // Ook zonder versie 5 minuten in de cache van Netlify: scheelt databaseverbindingen
+        "netlify-cdn-cache-control": forever ? "public, max-age=31536000, immutable, durable" : "public, max-age=300, durable",
         "x-content-type-options": "nosniff",
       },
     });
@@ -1413,7 +1424,7 @@ async function route(req, ctx = {}) {
       name: s.siteName, short_name: s.siteName.slice(0, 24), lang: "nl", start_url: "/", scope: "/", display: "standalone",
       background_color: s.logoBg, theme_color: s.logoBg, icons: [icon(192), icon(512)],
     });
-    return new Response(body, { status: 200, headers: { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "public, max-age=300" } });
+    return new Response(body, { status: 200, headers: { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "public, max-age=300", "netlify-cdn-cache-control": "public, max-age=300, durable" } });
   }
 
   // Mollie meldt een statuswijziging (zonder login). We vertrouwen de melding niet,

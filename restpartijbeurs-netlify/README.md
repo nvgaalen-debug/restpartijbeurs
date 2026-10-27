@@ -198,6 +198,13 @@ Elke wijziging via de API staat in het logboek, met de eerste tekens van de sleu
 - **Webhooks:** alleen `https` op poort 443 of 8443, geen interne netwerkadressen (ook niet via DNS of een adres dat later verandert: de server controleert het IP-adres bij het verbinden) en geen doorverwijzingen.
 
 ## Problemen
+
+**"Database niet bereikbaar (53300)"**: te veel verbindingen met de database. De gratis Aiven-database staat er ongeveer 20 toe. De app beperkt dat zelf op drie manieren:
+- 1 verbinding per serverfunctie (`PG_POOL_MAX`, standaard 1);
+- de database sluit een verbinding die 10 seconden stil is (`idle_session_timeout`), ook als Netlify de functie heeft bevroren;
+- logo, iconen en foto's komen uit de cache van Netlify.
+
+Zie je de fout toch vaak, kijk dan in Aiven bij *Metrics* naar het aantal verbindingen. Een groter abonnement met PgBouncer geeft er 100 of meer. `PG_IDLE_TIMEOUT=off` zet het automatisch sluiten uit; dat is alleen nodig bij Postgres ouder dan 14, en de app merkt dat ook zelf.
 | Melding | Oplossing |
 | --- | --- |
 | "Database niet bereikbaar" | Controleer `DATABASE_URL` en lees de functielog in Netlify (Functions → api). |
