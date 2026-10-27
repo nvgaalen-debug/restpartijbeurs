@@ -593,6 +593,15 @@ body:not(.locked) .bg-brand .o1 { top: 140px; }
 .push-prefs label.check { white-space: normal; color: var(--ink); }
 .push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .push-actions:not(:has(button:not([hidden]))) { display: none; }
+.push-ok { font-size: 14px; color: var(--ok); }
+.push-ok:empty { display: none; }
+/* Melding die binnenkomt terwijl de app open is */
+.inpush { position: fixed; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top, 0px)); z-index: 60; max-width: 460px; margin: 0 auto;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  display: grid; gap: 2px; text-align: left; font: inherit; cursor: pointer; }
+.inpush b { font-size: 14.5px; }
+.inpush span { font-size: 13.5px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .inpush { animation: down .25s ease-out; } @keyframes down { from { transform: translateY(-12px); opacity: 0; } } }
 
 /* Gevraagd: vragen van kopers */
 .want-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }

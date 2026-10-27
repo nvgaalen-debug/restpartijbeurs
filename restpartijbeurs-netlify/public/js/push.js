@@ -35,6 +35,7 @@ function pushUi({ msg, ios = false, prefs = null, on = false, test = false, off 
   $("#push-err").textContent = err;
 }
 async function renderPush() {
+  $("#push-ok").textContent = "";
   $("#acc-push-title").hidden = false; $("#acc-push").hidden = false;
   if (!pushSupported()) {
     if (isIos() && !isStandalone()) return pushUi({ msg: "Op een iPhone of iPad werken meldingen alleen als FoodSource op je beginscherm staat:", ios: true });
@@ -88,12 +89,16 @@ $("#push-off").addEventListener("click", async () => {
 });
 $("#push-test").addEventListener("click", async () => {
   $("#push-err").textContent = "";
+  const btn = $("#push-test"); btn.disabled = true;
+  // De server wacht een paar seconden: tijd om de app te sluiten. Een iPhone toont geen banner van een app die open is.
+  $("#push-ok").textContent = "De testmelding komt over 5 seconden. Ga nu naar je beginscherm of vergrendel je telefoon.";
   try {
     const sub = await currentSubscription();
-    if (!sub) return renderPush();
-    await api("push/test", { method: "POST", body: { endpoint: sub.endpoint } });
-    toast("Testmelding verstuurd. Hij verschijnt binnen een paar seconden.");
-  } catch (e) { $("#push-err").textContent = e.message; if (e.status === 410) renderPush(); }
+    if (!sub) { $("#push-ok").textContent = ""; return renderPush(); }
+    await api("push/test", { method: "POST", body: { endpoint: sub.endpoint, delay: true }, timeout: 25000 });
+    $("#push-ok").textContent = "Testmelding verstuurd. Niets gezien? Kijk in je meldingencentrum (veeg omlaag vanaf het midden van het scherm).";
+  } catch (e) { $("#push-ok").textContent = ""; $("#push-err").textContent = e.message; if (e.status === 410) renderPush(); }
+  finally { btn.disabled = false; }
 });
 $$("#push-prefs [data-push]").forEach((c) => c.addEventListener("change", async () => {
   $("#push-err").textContent = "";
@@ -138,10 +143,22 @@ async function openFromPush(view, seller, lot, want) {
   const t0 = Date.now();
   (function wait() { if (S.user && S.ready) return openFromPush(view, seller, lot, want); if (Date.now() - t0 < 20000) setTimeout(wait, 300); })();
 })();
+// Melding binnen terwijl de app open is: bovenin tonen (een iPhone laat dan zelf geen banner zien)
+function showInAppPush(m) {
+  $$(".inpush").forEach((x) => x.remove());
+  const el = document.createElement("button");
+  el.type = "button"; el.className = "inpush";
+  el.innerHTML = `<b>${esc(m.title || "FoodSource")}</b><span>${esc(m.body || "")}</span>`;
+  el.addEventListener("click", () => { el.remove(); openFromPush(m.view, m.seller, m.lot, m.want); });
+  ($$("dialog[open]").pop() || document.body).appendChild(el);
+  if (typeof pull === "function") pull();
+  setTimeout(() => el.remove(), 8000);
+}
 // App stond al open
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", (e) => {
     if (e.data?.type === "rpb-open") openFromPush(e.data.view, e.data.seller, e.data.lot, e.data.want);
+    if (e.data?.type === "rpb-push") showInAppPush(e.data);
   });
   // Service worker vroeg registreren, zodat meldingen ook binnenkomen als de app dicht is
   if (pushSupported()) window.addEventListener("load", () => { pushRegistration(); });

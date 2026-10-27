@@ -10,6 +10,7 @@ export const PUSH_KINDS = ["bid", "awarded", "rejected", "match"];
 const DEFAULT_PREFS = { bid: true, awarded: true, rejected: true, match: true };
 const MAX_DEVICES = 10;
 const TIMEOUT_MS = 4000;
+const TEST_DELAY_MS = Number(process.env.PUSH_TEST_DELAY_MS ?? 5000); // binnen de 10 s die een Netlify-functie mag duren
 // Alleen de bekende pushdiensten van Apple, Google, Mozilla en Microsoft (geen willekeurige adressen)
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^([a-z0-9-]+\.)*push\.apple\.com$/, /^([a-z0-9-]+\.)*notify\.windows\.com$/];
 
@@ -223,7 +224,10 @@ export function createPush({ q, log }) {
     if (b === "test" && method === "POST") {
       const row = await own();
       if (!row) throw httpError(404, "Meldingen staan op dit toestel niet aan.");
+      // Op verzoek even wachten: zo kan de gebruiker de app sluiten (iPhone toont geen banner van een open app)
+      if (body.delay) await new Promise((r) => setTimeout(r, TEST_DELAY_MS));
       const r = await sendTo(row, { title: "Testmelding", body: "Pushmeldingen werken op dit toestel.", view: "", tag: "test" }, base);
+      console.log("push test", new URL(row.endpoint).hostname, r.status || r.error || (r.gone ? "gone" : ""));
       if (r.gone) { await q("DELETE FROM rpb_push WHERE id = $1", [row.id]); throw httpError(410, "Dit toestel is niet meer aangemeld. Zet meldingen opnieuw aan."); }
       if (!r.ok) throw httpError(502, "De pushdienst nam de melding niet aan. Probeer het later opnieuw.");
       return json(200, { ok: true });

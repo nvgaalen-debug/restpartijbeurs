@@ -7,14 +7,20 @@ self.addEventListener("push", (e) => {
   let m = {};
   try { m = e.data ? e.data.json() : {}; } catch { m = { body: e.data ? e.data.text() : "" }; }
   const title = m.title || "FoodSource";
-  e.waitUntil(self.registration.showNotification(title, {
+  e.waitUntil((async () => {
+    // App staat open en zichtbaar: daar ook tonen (een iPhone laat dan zelf geen banner zien)
+    const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of list) if (c.visibilityState === "visible") c.postMessage({ type: "rpb-push", title, body: m.body || "", view: m.view || "", seller: m.seller || "", lot: m.lot || "", want: m.want || "" });
+    // Altijd ook een echte melding (verplicht: anders trekt Safari het abonnement in)
+    await self.registration.showNotification(title, {
     body: m.body || "",
     icon: "/api/brand/icon-192.png",
     badge: "/api/brand/icon-192.png",
     tag: m.tag || undefined,
     renotify: !!m.tag,
     data: { view: m.view || "", seller: m.seller || "", lot: m.lot || "", want: m.want || "" },
-  }));
+    });
+  })());
 });
 
 self.addEventListener("notificationclick", (e) => {

@@ -238,8 +238,11 @@ function parseEuroCents(raw) {
 // ---------- toast ----------
 let toastT;
 function toast(msg) {
+  // Staat er een venster open, dan de melding ín dat venster zetten (anders valt hij erachter)
+  const host = $$("dialog[open]").pop() || document.body;
   let el = $(".toast");
-  if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.appendChild(el); }
+  if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); }
+  if (el.parentNode !== host) host.appendChild(el);
   el.textContent = msg;
   clearTimeout(toastT);
   toastT = setTimeout(() => el.remove(), 3600);
