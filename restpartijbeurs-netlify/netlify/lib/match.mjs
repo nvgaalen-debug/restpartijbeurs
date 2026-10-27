@@ -2,7 +2,9 @@
 // Dezelfde regels staan in public/js/wants.js (wantMatchesLot), zodat de app en de meldingen hetzelfde zeggen.
 // - product: elk woord uit de vraag komt voor in product of ras van de partij
 //   (enkelvoud/meervoud maakt niet uit: "appels" = "appel", "tomaten" = "tomaat", "aardappelen" past bij "Frietaardappelen")
-// - zelfde categorie; klasse alleen als de koper er een koos
+// - andere categorie (bijv. per ongeluk "Groente" bij aardbeien): alleen als het product precies hetzelfde woord is
+//   (dan geen "appel" in "aardappel"); in dezelfde categorie mag een deel van een woord ("aardappelen" → "Frietaardappelen")
+// - klasse alleen als de koper er een koos
 // - maximale prijs alleen als die is ingevuld en de prijzen vergelijkbaar zijn (zelfde eenheid, of per kg)
 // - partij en vraag allebei nog open
 const STOP = new Set(["en", "of", "de", "het", "een", "met", "voor", "van", "klasse", "kg", "kilo"]);
@@ -15,10 +17,10 @@ export function words(s) {
   return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")
     .filter((w) => w.length >= 2 && !STOP.has(w)).map(stem);
 }
-export function productMatch(wantProduct, lotProduct, lotRas) {
+export function productMatch(wantProduct, lotProduct, lotRas, strict = false) {
   const want = words(wantProduct), lot = words(`${lotProduct || ""} ${lotRas || ""}`);
   if (!want.length || !lot.length) return false;
-  return want.every((w) => lot.some((l) => l === w || (w.length >= 4 && l.includes(w)) || (w.length >= 3 && l.endsWith(w))));
+  return want.every((w) => lot.some((l) => l === w || (!strict && ((w.length >= 4 && l.includes(w)) || (w.length >= 3 && l.endsWith(w))))));
 }
 export function lotOpen(l, today) {
   const rem = l.remaining ?? l.qty;
@@ -32,6 +34,6 @@ export function priceOk(w, l) {
   return true; // niet te vergelijken: de koper beoordeelt zelf
 }
 export function wantMatchesLot(w, l, today) {
-  return wantOpen(w, today) && lotOpen(l, today) && w.category === l.category
-    && (!w.klasse || w.klasse === l.klasse) && priceOk(w, l) && productMatch(w.product, l.product, l.ras);
+  return wantOpen(w, today) && lotOpen(l, today)
+    && (!w.klasse || w.klasse === l.klasse) && priceOk(w, l) && productMatch(w.product, l.product, l.ras, w.category !== l.category);
 }

@@ -176,7 +176,7 @@ function renderMine() {
         <td class="num">${num.format(b.qty)} ${esc(l.unit)}</td>
         <td class="num">${euro.format(b.price * Math.min(b.qty, rem || b.qty))}</td>
         <td>${status}</td>
-        <td class="num">${canAct ? `<div class="actions" style="justify-content:flex-end"><button class="btn primary small" type="button" data-act="accept" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Accepteren</button><button class="btn small" type="button" data-act="reject" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Afwijzen</button></div>` : ""}</td>
+        <td class="num"><div class="actions" style="justify-content:flex-end">${canAct ? `<button class="btn primary small" type="button" data-act="accept" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Accepteren</button><button class="btn small" type="button" data-act="reject" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Afwijzen</button>` : ""}<button class="btn small${acc ? " primary" : ""}" type="button" data-act="contact-bidder" data-lot="${esc(l.id)}" data-bidder="${esc(b.bidderId)}">Contact</button></div></td>
       </tr>`;
     }).join("");
     return `<div class="panel">
@@ -386,14 +386,39 @@ function parseContact(s) {
 function openContact(sellerId, lotId) {
   const l = allLots().find((x) => x.id === lotId && x.sellerId === sellerId);
   if (!l) return;
-  const c = parseContact(l.contact);
   const rem = l.remaining ?? l.qty;
-  $("#ct-sub").textContent = `Over ${l.product}${l.ras ? " · " + l.ras : ""}, ${num.format(rem)} ${l.unit} à ${euro.format(l.price)}.`;
-  $("#ct-company").textContent = l.company || "Aanbieder";
-  $("#ct-line").textContent = c.text || "Deze aanbieder heeft geen telefoonnummer of e-mailadres ingevuld.";
   const me = S.user ? S.user.name + (S.user.company ? ", " + S.user.company : "") : "";
-  $("#ct-msg").value = `Goedendag,\n\nIk heb interesse in uw restpartij ${l.product}${l.ras ? " (" + l.ras + ")" : ""}: ${num.format(rem)} ${l.unit} à ${euro.format(l.price)} per ${unitSingular(l.unit)}, gezien op ${(S.settings && S.settings.siteName) || "de Restpartijbeurs"}. Is de partij nog beschikbaar?\n\nMet vriendelijke groet,\n${me}`;
-  const subject = `Restpartij ${l.product}${l.ras ? " " + l.ras : ""}`;
+  openContactWith({
+    company: l.company || "Aanbieder", contact: l.contact, who: "aanbieder",
+    sub: `Over ${l.product}${l.ras ? " · " + l.ras : ""}, ${num.format(rem)} ${l.unit} à ${euro.format(l.price)}.`,
+    msg: `Goedendag,\n\nIk heb interesse in uw restpartij ${l.product}${l.ras ? " (" + l.ras + ")" : ""}: ${num.format(rem)} ${l.unit} à ${euro.format(l.price)} per ${unitSingular(l.unit)}, gezien op ${(S.settings && S.settings.siteName) || "de Restpartijbeurs"}. Is de partij nog beschikbaar?\n\nMet vriendelijke groet,\n${me}`,
+    subject: `Restpartij ${l.product}${l.ras ? " " + l.ras : ""}`,
+  });
+}
+// Aanbieder → bieder: over een bod op een eigen partij (open, gegund of afgewezen)
+function openContactBidder(lotId, bidderId) {
+  const l = myLotsDoc()?.items?.[lotId];
+  const b = bidsFor(lotId).find((x) => x.bidderId === bidderId);
+  if (!l || !b) return;
+  const acc = l.accepted?.[bidderId];
+  const me = S.user ? S.user.name + (S.user.company ? ", " + S.user.company : "") : "";
+  const what = `${l.product}${l.ras ? " (" + l.ras + ")" : ""}`;
+  const body = acc
+    ? `Bedankt voor uw bod op onze partij ${what}. Wij hebben u ${num.format(acc.qty)} ${l.unit} à ${euro.format(acc.price)} per ${unitSingular(l.unit)} gegund${l.location ? ", af te halen in " + l.location : ""}. Graag stemmen we het ophalen en de betaling met u af. Wanneer schikt het u?`
+    : `Bedankt voor uw bod op onze partij ${what}: ${num.format(b.qty)} ${l.unit} à ${euro.format(b.price)} per ${unitSingular(l.unit)}. Ik wil het graag even met u over uw bod hebben.`;
+  openContactWith({
+    company: b.company || "Bieder", contact: b.contact, who: "bieder",
+    sub: `Over het bod op ${l.product}${l.ras ? " · " + l.ras : ""}: ${num.format(acc ? acc.qty : b.qty)} ${l.unit} à ${euro.format(acc ? acc.price : b.price)}${acc ? " (gegund)" : ""}.`,
+    msg: `Goedendag,\n\n${body}\n\nMet vriendelijke groet,\n${me}`,
+    subject: `Uw bod op ${l.product}${l.ras ? " " + l.ras : ""}`,
+  });
+}
+function openContactWith({ company, contact, who, sub, msg, subject }) {
+  const c = parseContact(contact);
+  $("#ct-sub").textContent = sub;
+  $("#ct-company").textContent = company;
+  $("#ct-line").textContent = c.text || `Deze ${who} heeft geen telefoonnummer of e-mailadres ingevuld.`;
+  $("#ct-msg").value = msg;
   const btns = [];
   if (c.tel) btns.push(`<a class="btn primary" id="ct-call" href="tel:${esc(c.tel)}">Bellen</a>`);
   if (c.wa) btns.push(`<a class="btn" id="ct-wa" href="#" target="_blank" rel="noopener">WhatsApp</a>`);
@@ -410,11 +435,13 @@ function openContact(sellerId, lotId) {
   $("#ct-msg").oninput = updateLinks;
   const copy = $("#ct-copy");
   if (copy) copy.onclick = async () => {
-    const t = `${l.company}\n${c.text}`;
+    const t = `${company}\n${c.text}`;
     try { await navigator.clipboard.writeText(t); $("#ct-hint").textContent = "Gekopieerd."; }
     catch { const r = document.createRange(); r.selectNodeContents($("#ct-line")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("#ct-hint").textContent = "Geselecteerd. Druk op Ctrl+C om te kopiëren."; }
   };
   dlgContact.showModal();
+  // Begin van het bericht in beeld (niet het einde, waar de cursor anders staat)
+  const ta = $("#ct-msg"); try { ta.setSelectionRange(0, 0); } catch {} ta.scrollTop = 0;
 }
 
 const dlgPhoto = $("#dlg-photo");
@@ -535,6 +562,7 @@ document.addEventListener("click", async (e) => {
   if (act === "lot-detail") return openLotDetail(t.dataset.seller, lotId);
   if (act === "photo") return openLightbox(t.dataset.seller, lotId, t.dataset.i);
   if (act === "contact") return openContact(t.dataset.seller, lotId);
+  if (act === "contact-bidder") return openContactBidder(lotId, bidder);
   if (act === "new") return openLotDialog();
   if (act === "bid") return openBidDialog(lotId);
   if (act === "manage") { if (dlgDetail.open) dlgDetail.close(); return setView("mine"); }

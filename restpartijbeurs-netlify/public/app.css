@@ -661,3 +661,6 @@ dialog.notes { width: min(460px, calc(100vw - 24px)); }
   dialog.notes .notes-list { max-height: none; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
   dialog.sheet.notes .dlg-head h2 { font-size: 22px; }
 }
+
+/* Categorie vanzelf ingevuld: even laten oplichten */
+select.auto-set { box-shadow: 0 0 0 3px var(--accent-soft); transition: box-shadow .3s; }

@@ -9,10 +9,10 @@ function matchStem(w) {
 }
 const matchWords = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")
   .filter((w) => w.length >= 2 && !MATCH_STOP.has(w)).map(matchStem);
-function productMatches(wantProduct, lotProduct, lotRas) {
+function productMatches(wantProduct, lotProduct, lotRas, strict = false) {
   const want = matchWords(wantProduct), lot = matchWords(`${lotProduct || ""} ${lotRas || ""}`);
   if (!want.length || !lot.length) return false;
-  return want.every((w) => lot.some((l) => l === w || (w.length >= 4 && l.includes(w)) || (w.length >= 3 && l.endsWith(w))));
+  return want.every((w) => lot.some((l) => l === w || (!strict && ((w.length >= 4 && l.includes(w)) || (w.length >= 3 && l.endsWith(w))))));
 }
 function wantIsOpen(w) { return w && w.status !== "gesloten" && !!w.until && w.until >= localDate(); }
 function priceFits(w, l) {
@@ -22,7 +22,8 @@ function priceFits(w, l) {
   return true;
 }
 function wantMatchesLot(w, l) {
-  return wantIsOpen(w) && !lotState(l).closed && w.category === l.category && (!w.klasse || w.klasse === l.klasse) && priceFits(w, l) && productMatches(w.product, l.product, l.ras);
+  // Andere categorie (bijv. per ongeluk "Groente" bij aardbeien): alleen bij precies hetzelfde product
+  return wantIsOpen(w) && !lotState(l).closed && (!w.klasse || w.klasse === l.klasse) && priceFits(w, l) && productMatches(w.product, l.product, l.ras, w.category !== l.category);
 }
 
 // ---------- gegevens ----------
@@ -111,6 +112,7 @@ const dlgWant = $("#dlg-want");
 function openWantDialog(id) {
   const w = id ? myWantsDoc()?.items?.[id] : null;
   S.editingWant = id || null;
+  S.wantCatTouched = !!w;
   const reopen = w && (w.status === "gesloten" || !wantIsOpen(w));
   $("#want-title").textContent = !w ? "Vraag plaatsen" : reopen ? "Vraag heropenen" : "Vraag bewerken";
   $("#want-submit").textContent = !w ? "Plaatsen" : reopen ? "Heropenen" : "Opslaan";
@@ -171,7 +173,7 @@ document.addEventListener("click", async (e) => {
       wantRef: w.key,
       title: "Aanbieden op vraag",
       banner: `Op de vraag van ${w.company || "een koper"}: ${num.format(w.qty)} ${w.unit} ${w.product}${w.maxPrice > 0 ? `, max ${euro.format(w.maxPrice)} per ${unitSingular(w.unit)}` : ""}${w.region ? ` (${w.region})` : ""}. Pas aan wat bij jou anders is; de koper krijgt bericht zodra je publiceert.`,
-      fields: { "#f-product": w.product, "#f-cat": w.category, "#f-klasse": w.klasse || undefined, "#f-qty": w.unit === "kg" ? decOut(w.qty) : String(w.qty), "#f-unit": w.unit, "#f-price": w.maxPrice > 0 ? eurOut(w.maxPrice) : "" },
+      fields: { "#f-product": w.product, "#f-cat": guessCategory(w.product) || w.category, "#f-klasse": w.klasse || undefined, "#f-qty": w.unit === "kg" ? decOut(w.qty) : String(w.qty), "#f-unit": w.unit, "#f-price": w.maxPrice > 0 ? eurOut(w.maxPrice) : "" },
     });
   }
 });
@@ -181,3 +183,36 @@ $("#want-chips").addEventListener("click", (e) => {
   $$("#want-chips .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === c)));
   renderWants();
 });
+
+// ---------- categorie vanzelf invullen bij het typen van het product ----------
+// Eerst: wat er al in het aanbod staat met precies dit product (niet de vragen: daar kan juist de fout in zitten); anders een lijst met bekende producten.
+// Langste woord eerst, zodat "Frietaardappelen" Aardappelen wordt en niet Fruit (vanwege "appel").
+const CAT_WORDS = {
+  Groente: "tomaat trostomaat cherrytomaat komkommer paprika sla ijsbergsla kropsla rucola broccoli bloemkool wortel peen ui sjalot prei champignon paddenstoel courgette aubergine spinazie andijvie spruit kool rodekool spitskool savooiekool chinesekool paksoi witlof asperge boon sperzieboon snijboon erwt peul knoflook selderij bleekselderij knolselderij radijs biet pompoen mais venkel pastinaak peper rabarber koolrabi raap",
+  Fruit: "appel peer aardbei framboos braam bes blauwebes bosbes kers pruim druif banaan sinaasappel mandarijn clementine citroen limoen meloen watermeloen kiwi mango ananas perzik nectarine abrikoos grapefruit avocado granaatappel vijg elstar jonagold jonagored kanzi junami conference doyenne gieser",
+  Aardappelen: "aardappel frietaardappel consumptieaardappel kriel krieltje pootaardappel agria fontane bintje nicola innovator markies opperdoezer zoeteaardappel",
+};
+const CAT_DICT = Object.entries(CAT_WORDS).flatMap(([cat, list]) => list.split(" ").map((w) => [matchStem(w), cat])).sort((a, b) => b[0].length - a[0].length);
+function guessCategory(product) {
+  const ws = matchWords(product);
+  if (!ws.length) return "";
+  const key = ws.join(" ");
+  const seen = {};
+  for (const x of allLots()) if (matchWords(x.product).join(" ") === key && x.category) seen[x.category] = (seen[x.category] || 0) + 1;
+  const best = Object.entries(seen).sort((a, b) => b[1] - a[1])[0];
+  if (best) return best[0];
+  for (const [stem, cat] of CAT_DICT) if (ws.some((w) => w === stem || (stem.length >= 4 && w.includes(stem)))) return cat;
+  return "";
+}
+function autoCategory(productSel, catSel, flag) {
+  $(productSel).addEventListener("input", () => {
+    if (S[flag]) return; // zelf gekozen: niet meer overschrijven
+    const c = guessCategory($(productSel).value);
+    if (c && $(catSel).value !== c) { $(catSel).value = c; $(catSel).classList.add("auto-set"); setTimeout(() => $(catSel).classList.remove("auto-set"), 900); }
+  });
+  $(catSel).addEventListener("change", () => { S[flag] = true; });
+}
+autoCategory("#w-product", "#w-cat", "wantCatTouched");
+autoCategory("#f-product", "#f-cat", "lotCatTouched");
+// Nieuw venster: weer vrij om te raden (bij bewerken of 'Ik kan leveren' staat de categorie al goed)
+document.addEventListener("lot-dialog-open", () => { S.lotCatTouched = !!S.editing || !!S.wantRef; });
