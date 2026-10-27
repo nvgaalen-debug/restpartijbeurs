@@ -142,12 +142,36 @@ Bij uitloggen wordt het toestel afgemeld.
 
 ## Gevraagd: vraag en aanbod
 
-Kopers zetten in het tabblad **Gevraagd** wat ze zoeken: product, categorie, hoeveelheid, klasse (of "maakt niet uit"), maximale prijs (leeg = in overleg), nodig vóór, regio en toelichting. Aanbieders tikken op **Ik kan leveren**: het venster *Partij aanbieden* opent, al ingevuld met de vraag. De partij die zo ontstaat is een gewone partij (bieden, gunnen en meldingen zoals altijd), met een vaste koppeling naar de vraag (`wantRef`).
+Kopers zetten in het tabblad **Gevraagd** wat ze zoeken: product, categorie, hoeveelheid, klasse (of "maakt niet uit"), maximale prijs (leeg = in overleg), nodig vóór, regio en toelichting. Aanbieders tikken op **Ik kan leveren**. Hebben ze al lopende partijen, dan kiezen ze eerst daaruit. Passende partijen staan bovenaan, met "Past bij de vraag". Met *Aanbieden* koppelen ze een bestaande partij aan de vraag (`offeredTo` in de partij), en de koper krijgt bericht. Met *Nieuwe partij aanbieden*, of als ze nog niets in het aanbod hebben, opent *Partij aanbieden*, al ingevuld met de vraag. Die nieuwe partij is een gewone partij met een vaste koppeling naar de vraag (`wantRef`). Bieden, gunnen en meldingen gaan zoals altijd. Aan wie een partij is aangeboden, ziet alleen die koper zelf.
 
 - **Passen vraag en aanbod bij elkaar** (product komt overeen — enkelvoud/meervoud maakt niet uit, en in dezelfde categorie past "aardappelen" ook bij "Frietaardappelen"; staat de vraag per ongeluk onder een andere categorie, dan moet het product precies hetzelfde woord zijn, zodat "appel" niet bij "aardappel" past —, klasse als gekozen, prijs niet boven het maximum). Bij het typen van het product vult de categorie zich vanzelf in (in Vraag plaatsen en Partij aanbieden): eerst wat er al in het aanbod staat, anders een lijst met bekende producten; zelf gekozen blijft staan, dan zie je dat bij de vraag. De koper krijgt een pushmelding bij een nieuwe passende partij, de aanbieder bij een nieuwe vraag die past bij zijn partij ("Er wordt gevraagd wat jij hebt", zonder naam van de koper). Regels: `netlify/lib/match.mjs` (server) en `public/js/wants.js` (app) — houd die twee gelijk.
 - De koper sluit de vraag met **Gevonden** of **Intrekken**; na de datum verloopt hij vanzelf. Gesloten vragen ziet alleen de koper zelf (onder *Mijn vragen*, met *Heropenen*) en de beheerder.
 - Opslag: `rpb_docs` met collectie `wants` (één document per koper, net als partijen en biedingen); de server controleert alles. Logboek: soort *Vraag*. Leegmaken van de handel wist ook vragen.
 - Meldingen: nieuw schuifje *Vraag en aanbod passen bij elkaar* in Mijn account; toestellen die al aangemeld waren krijgen het automatisch.
+- **Beheer → Vragen** toont alle vragen met de koper en zijn contact, het aantal passende partijen en de status. Filters: open, gesloten of verlopen, alle. De beheerder kan een vraag **sluiten**, met een reden uit de redencodes. De koper ziet dan "Gesloten door beheer" en kan hem niet zelf heropenen. De beheerder kan ook **heropenen** of **definitief verwijderen**. Alles staat in het logboek. Endpoint: `POST /api/admin/wants` met `{buyerId, wantId, action: close|reopen|delete, reason}`.
+
+## Opschonen: foto's, oude partijen en archief
+
+Je stelt dit in bij **Beheer → Website-instellingen → Opschonen**. Afgesloten betekent verkocht, ingetrokken of verlopen.
+
+- **Foto's van afgesloten partijen** worden verwijderd na een instelbaar aantal dagen: standaard 30, of nooit. De partij zelf blijft bestaan, met zijn gunningen, dus statistieken en gunningen blijven kloppen.
+- **Afgesloten partijen naar het archief** na een instelbaar aantal dagen: standaard nooit, kiesbaar van 6 maanden tot 5 jaar. Eerst gaat er een klein regeltje met alleen de cijfers naar het archief (tabel `rpb_archive`). Daarna verdwijnt de partij uit de app, en biedingen op die partij gaan mee.
+  - In het archief staan: datum, product, hoeveelheid, prijs, gunningen met prijs en koper, en de reden van intrekken.
+  - Er staan geen foto's, notities of contactgegevens in.
+  - Statistieken, het dashboard en de export tellen het archief mee.
+- **Gesloten of verlopen vragen** gaan na 90 dagen weg.
+
+Opschonen gebeurt elke nacht na 3:00 vanzelf, via de geplande functie van elke 5 minuten, en één keer per dag. Met *Nu opschonen* start je het met de hand. Wat er is opgeruimd staat in het logboek.
+
+Ook in dat blok:
+- hoeveel foto's er zijn en hoeveel ruimte ze innemen;
+- **Alle partijen exporteren (CSV)**: één regel per partij, actief en archief, met gunningen. Excel opent het bestand direct.
+
+Endpoints (alleen beheerder):
+- `GET /api/admin/storage`
+- `POST /api/admin/cleanup`
+- `GET /api/admin/archive`
+- `GET /api/admin/export.csv`
 
 ## FoodSource API v1 (koppelingen)
 

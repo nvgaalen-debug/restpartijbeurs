@@ -37,7 +37,7 @@ function allWants() {
 }
 const myWantsDoc = () => S.wantsDocs.get(S.me) || null;
 function wantState(w) {
-  if (w.status === "gesloten") return { label: w.closedReason === "gevonden" ? "Gevonden" : "Gesloten", cls: "off", closed: true };
+  if (w.status === "gesloten") return { label: w.closedBy === "beheer" ? "Gesloten door beheer" : w.closedReason === "gevonden" ? "Gevonden" : "Gesloten", cls: "off", closed: true };
   const dl = daysLeft(w.until);
   if (dl === null || dl < 0) return { label: "Verlopen", cls: "off", closed: true };
   const d = new Date(w.until + "T12:00").toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
@@ -45,9 +45,11 @@ function wantState(w) {
 }
 // Partijen die bij een vraag passen, plus partijen die als reactie op deze vraag zijn aangeboden
 function lotsForWant(w) {
-  return allLots().filter((l) => l.sellerId !== w.buyerId && !lotState(l).closed && (l.wantRef === w.key || wantMatchesLot(w, l)));
+  return allLots().filter((l) => l.sellerId !== w.buyerId && !lotState(l).closed && (isReaction(l, w) || wantMatchesLot(w, l)));
 }
 
+// Door de aanbieder op deze vraag aangeboden (nieuwe partij via 'Ik kan leveren', of een bestaande partij)
+const isReaction = (l, w) => l.wantRef === w.key || !!l.offeredTo?.[w.key];
 // ---------- tonen ----------
 S.wcat = "";
 function wantCard(w) {
@@ -59,14 +61,17 @@ function wantCard(w) {
   if (mine) {
     extra = lots.length
       ? `<div class="want-hits"><div class="want-hits-title">${lots.length === 1 ? "1 partij past" : lots.length + " partijen passen"}</div>${lots.slice(0, 6).map((l) => `<button class="want-hit" type="button" data-act="want-lot" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">
-          <span><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${l.wantRef === w.key ? ' <span class="want-tag">Reactie</span>' : ""}<span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${esc(l.company)}${l.location ? " · " + esc(l.location) : ""}</span></span>
+          <span><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${isReaction(l, w) ? ' <span class="want-tag">Reactie</span>' : ""}<span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${esc(l.company)}${l.location ? " · " + esc(l.location) : ""}</span></span>
           <span class="want-hit-price">${euro.format(l.price)}<span class="sub">per ${esc(unitSingular(l.unit))}</span></span></button>`).join("")}</div>`
       : st.closed ? "" : `<div class="want-none">Nog geen passend aanbod. Je krijgt een melding zodra er iets past.</div>`;
-    actions = st.closed
+    actions = w.closedBy === "beheer" ? ""
+      : st.closed
       ? `<button class="btn small" type="button" data-act="want-edit" data-want="${esc(w.id)}">Heropenen</button>`
       : `<button class="btn small" type="button" data-act="want-edit" data-want="${esc(w.id)}">Bewerken</button><button class="btn small" type="button" data-act="want-found" data-want="${esc(w.id)}">Gevonden</button><button class="btn small ghost" type="button" data-act="want-close" data-want="${esc(w.id)}">Intrekken</button>`;
   } else {
-    if (myLots.length) extra = `<div class="want-yours">Je partij <b>${esc(myLots[0].product)}</b> past al bij deze vraag; de koper ziet hem.</div>`;
+    const offered = myLots.find((l) => isReaction(l, w));
+    if (offered) extra = `<div class="want-yours">Je hebt <b>${esc(offered.product)}</b> aangeboden; de koper ziet hem bij de vraag.</div>`;
+    else if (myLots.length) extra = `<div class="want-yours">Je partij <b>${esc(myLots[0].product)}</b> past al bij deze vraag; de koper ziet hem.</div>`;
     actions = S.canWrite !== false && S.me ? `<button class="btn primary small" type="button" data-act="want-supply" data-want="${esc(w.key)}">Ik kan leveren</button>` : "";
   }
   return `<article class="want${mine ? " mine" : ""}${st.closed ? " closed" : ""}" id="want-${esc(w.buyerId)}-${esc(w.id)}">
@@ -155,7 +160,7 @@ $("#form-want").addEventListener("submit", async (e) => {
 // ---------- acties ----------
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-act]");
-  if (!t || !/^want-/.test(t.dataset.act)) return;
+  if (!t || !/^(want|supply)-/.test(t.dataset.act)) return;
   const act = t.dataset.act;
   if (act === "want-new") return openWantDialog();
   if (act === "want-edit") return openWantDialog(t.dataset.want);
@@ -169,6 +174,45 @@ document.addEventListener("click", async (e) => {
   if (act === "want-supply") {
     const w = allWants().find((x) => x.key === t.dataset.want);
     if (!w) return;
+    // Eerst je eigen lopende partijen; alleen als je niets in het aanbod hebt meteen een nieuwe partij
+    if (myOpenLots().length) return openSupply(w);
+    return newLotForWant(w);
+  }
+  if (act === "supply-lot") {
+    const w = S.supplyWant, id = t.dataset.lot;
+    if (!w || !id) return;
+    t.disabled = true;
+    const ok = await saveMyLots((doc) => { const it = doc.items[id]; if (it) it.offeredTo = { ...(it.offeredTo || {}), [w.key]: { at: new Date().toISOString() } }; });
+    t.disabled = false;
+    if (!ok) return;
+    dlgSupply.close();
+    const l = myLotsDoc()?.items?.[id];
+    toast(`${l?.product || "Partij"} aangeboden. ${w.company || "De koper"} krijgt bericht en ziet hem bij de vraag.`);
+    return;
+  }
+  if (act === "supply-new") { const w = S.supplyWant; dlgSupply.close(); if (w) newLotForWant(w); }
+});
+function myOpenLots() {
+  const d = myLotsDoc(); if (!d) return [];
+  return Object.entries(d.items || {}).map(([id, it]) => ({ ...it, id, sellerId: S.me, company: it.company || d.company || "" })).filter((l) => !lotState(l).closed);
+}
+// "Ik kan leveren": kies een partij die je al aanbiedt, of zet een nieuwe online
+const dlgSupply = $("#dlg-supply");
+function openSupply(w) {
+  S.supplyWant = w;
+  $("#sup-sub").textContent = `${w.company || "Een koper"} zoekt ${num.format(w.qty)} ${w.unit} ${w.product}${w.klasse ? " (" + w.klasse + ")" : ""}${w.maxPrice > 0 ? `, max ${euro.format(w.maxPrice)} per ${unitSingular(w.unit)}` : ", prijs in overleg"}${w.region ? ` · ${w.region}` : ""}.`;
+  const lots = myOpenLots().map((l) => ({ l, fit: wantMatchesLot(w, l), done: !!(l.offeredTo?.[w.key] || l.wantRef === w.key) }))
+    .sort((a, b) => (b.fit - a.fit) || (b.l.createdAt || "").localeCompare(a.l.createdAt || ""));
+  $("#sup-list").innerHTML = lots.map(({ l, fit, done }) => `<div class="sup-item${fit ? " fit" : ""}">
+      ${validPhotos(l)[0] ? `<img src="${photoUrl(validPhotos(l)[0])}" alt="" loading="lazy">` : `<span class="sup-noimg sw ${esc(l.category)}"></span>`}
+      <div class="sup-txt"><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${fit ? '<span class="want-tag">Past bij de vraag</span>' : ""}
+        <span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${euro.format(l.price)} per ${esc(unitSingular(l.unit))}${l.location ? " · " + esc(l.location) : ""}</span></div>
+      ${done ? `<span class="pill ok">Aangeboden</span>` : `<button class="btn small${fit ? " primary" : ""}" type="button" data-act="supply-lot" data-lot="${esc(l.id)}">Aanbieden</button>`}
+    </div>`).join("");
+  dlgSupply.showModal();
+}
+function newLotForWant(w) {
+  {
     openLotDialog(null, {
       wantRef: w.key,
       title: "Aanbieden op vraag",
@@ -176,7 +220,7 @@ document.addEventListener("click", async (e) => {
       fields: { "#f-product": w.product, "#f-cat": guessCategory(w.product) || w.category, "#f-klasse": w.klasse || undefined, "#f-qty": w.unit === "kg" ? decOut(w.qty) : String(w.qty), "#f-unit": w.unit, "#f-price": w.maxPrice > 0 ? eurOut(w.maxPrice) : "" },
     });
   }
-});
+}
 $("#want-chips").addEventListener("click", (e) => {
   const c = e.target.closest("[data-wcat]"); if (!c) return;
   S.wcat = c.dataset.wcat;

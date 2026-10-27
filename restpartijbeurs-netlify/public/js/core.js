@@ -170,6 +170,7 @@ async function pullOnce(full) {
     if (d.profiles) S.profiles = d.profiles;
     if (typeof d.notesUnread === "number" && typeof setNotesBadge === "function") setNotesBadge(d.notesUnread);
     if (S.view === "admin" && S.apane === "lots") setTimeout(renderAdminLots, 0);
+    if (S.view === "admin" && S.apane === "wants") setTimeout(renderAdminWants, 0);
     if (S.view === "admin" && S.apane === "stats" && (d.docs || []).length) setTimeout(renderStats, 0);
     if (typeof d.pendingCount === "number") {
       const changed = d.pendingCount !== S.pendingCount;

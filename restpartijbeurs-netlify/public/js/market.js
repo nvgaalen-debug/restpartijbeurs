@@ -35,7 +35,7 @@ function lotCard(l, { example = false } = {}) {
       <span class="pill ${st.cls}">${mine && !st.closed ? "Jouw partij" : st.label}</span></div>
     <div class="lot-body">
       ${example ? "" : thumbStrip(l)}
-      <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}${!example && l.wantRef && l.wantRef.startsWith(S.me + ":") ? `<div class="want-tag">Reactie op jouw vraag</div>` : ""}</div>
+      <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}${!example && ((l.wantRef || "").startsWith(S.me + ":") || Object.keys(l.offeredTo || {}).some((k) => k.startsWith(S.me + ":"))) ? `<div class="want-tag">Reactie op jouw vraag</div>` : ""}</div>
       ${specRows(l)}
       ${l.note ? `<div class="note">${esc(l.note)}</div>` : ""}
     </div>
@@ -127,7 +127,11 @@ function renderMarket() {
       <div class="example">${lotCard(EXAMPLE, { example: true })}</div></div>`;
     return;
   }
-  if (!S.showClosed || isCompact()) lots = lots.filter((l) => !lotState(l).closed); // telefoon: alleen lopende partijen
+  // Afgesloten partijen (verkocht, ingetrokken, verlopen) tonen kan alleen de beheerder, en niet op de telefoon
+  const isAdmin = S.user?.role === "beheerder";
+  document.body.classList.toggle("can-show-closed", isAdmin);
+  if (!isAdmin) { S.showClosed = false; $("#show-closed").checked = false; }
+  if (!S.showClosed || isCompact()) lots = lots.filter((l) => !lotState(l).closed);
   if (S.cat) lots = lots.filter((l) => l.category === S.cat);
   if (S.q) {
     const q = S.q.toLowerCase();

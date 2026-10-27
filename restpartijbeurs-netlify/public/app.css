@@ -664,3 +664,18 @@ dialog.notes { width: min(460px, calc(100vw - 24px)); }
 
 /* Categorie vanzelf ingevuld: even laten oplichten */
 select.auto-set { box-shadow: 0 0 0 3px var(--accent-soft); transition: box-shadow .3s; }
+
+/* "Ook afgesloten partijen" alleen voor de beheerder */
+body:not(.can-show-closed) #view-market .show-closed { display: none; }
+
+/* "Ik kan leveren": kies een eigen partij */
+dialog.supply { width: min(560px, calc(100vw - 24px)); }
+.sup-list { display: grid; gap: 8px; }
+.sup-item { display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; background: var(--surface); }
+.sup-item.fit { border-color: var(--accent); }
+.sup-item img, .sup-noimg { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; display: block; }
+.sup-noimg { opacity: .35; }
+.sup-txt { display: grid; gap: 2px; min-width: 0; }
+.sup-txt b { overflow-wrap: anywhere; }
+.sup-txt .want-tag { justify-self: start; margin-top: 0; }
+.sup-txt .sub { font-size: 13px; color: var(--muted); }

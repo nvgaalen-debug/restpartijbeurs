@@ -25,6 +25,7 @@ import tls from "node:tls";
 import { createV1 } from "../lib/foodsource-v1.mjs";
 import { createAi, aiConfigured, aiModel } from "../lib/ai-photo.mjs";
 import { createPush } from "../lib/push.mjs";
+import { createCleanup, lotsCsv } from "../lib/cleanup.mjs";
 import { wantMatchesLot, lotOpen, wantOpen } from "../lib/match.mjs";
 
 export const config = { path: "/api/*" };
@@ -43,13 +44,13 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
-const SCHEMA_VERSION = "2026-10-27b"; // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
+const SCHEMA_VERSION = "2026-10-27c"; // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 // Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
 // Alleen tabellen van de Restpartijbeurs (vaste lijst), nooit die van een andere app (zoals records van Vloeren Kassa).
 const PG_MIGRATE_FROM = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_MIGRATE_FROM || "") ? process.env.PG_MIGRATE_FROM : "";
-const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets", "rpb_push", "rpb_notes"];
+const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets", "rpb_push", "rpb_notes", "rpb_archive"];
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -284,6 +285,14 @@ async function ensureSchema() {
         read_at TIMESTAMPTZ
       )`);
       await q("CREATE INDEX IF NOT EXISTS rpb_notes_user ON rpb_notes (user_id, id)");
+      // Archief: cijfers van opgeruimde partijen (voor statistieken en export), zonder foto's of contactgegevens
+      await q(`CREATE TABLE IF NOT EXISTS rpb_archive (
+        id TEXT PRIMARY KEY,
+        seller_id TEXT NOT NULL,
+        closed_on TEXT NOT NULL,
+        archived_at TIMESTAMPTZ NOT NULL,
+        data JSONB NOT NULL
+      )`);
       await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
   }
@@ -424,6 +433,8 @@ const SETTING_DEFAULTS = {
   logoVersion: "",                 // leeg = geen eigen logo; anders wisselt de waarde bij elk nieuw logo
   logoShowName: "true",            // naam van de website naast het logo tonen
   logoBg: "#ffffff",               // achtergrondkleur van het app-icoon
+  cleanupPhotoDays: "30",          // foto's van afgesloten partijen weg na zoveel dagen (0 = nooit)
+  cleanupLotDays: "0",             // afgesloten partijen naar het archief na zoveel dagen (0 = nooit)
   reasonCodes: JSON.stringify([    // redenen bij het intrekken van een advertentie
     { code: "VERK", label: "Buiten het platform verkocht", active: true, needsNote: false },
     { code: "KWAL", label: "Kwaliteit niet meer goed", active: true, needsNote: false },
@@ -483,6 +494,8 @@ async function getSettings() {
     subscriptionPrice: Number(s.subscriptionPrice) || 0,
     subscriptionText: s.subscriptionText,
     vatPercent: Number.isFinite(Number(s.vatPercent)) ? Number(s.vatPercent) : 21,
+    cleanupPhotoDays: Math.max(0, Math.floor(Number(s.cleanupPhotoDays) || 0)),
+    cleanupLotDays: Math.max(0, Math.floor(Number(s.cleanupLotDays) || 0)),
     payMethods: String(s.payMethods || "").split(",").map((x) => x.trim()).filter((x) => PAY_METHODS.includes(x)),
     autoApprovePaid: s.autoApprovePaid === "true",
     requireSubscription: s.requireSubscription !== "false",
@@ -506,8 +519,8 @@ async function getSettings() {
 
 // Leegmaken mag standaard alleen in de testomgeving
 function wipeAllowed() { return process.env.APP_ENV === "test" || process.env.ALLOW_WIPE === "true"; }
-const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events", "rpb_notes"];
-const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_push", "rpb_notes", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
+const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events", "rpb_notes", "rpb_archive"];
+const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_push", "rpb_notes", "rpb_archive", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
 
 // ---------- e-mail: via Gmail (SMTP) of via Brevo ----------
 const MAIL_BASE = process.env.MAIL_API_BASE || "https://api.brevo.com/v3";
@@ -921,6 +934,13 @@ async function normalizeLots(me, prev, data) {
     // Reactie op een vraag ("koper:vraag"): alleen bij het aanmaken te zetten, daarna vast
     it.wantRef = was ? (was.wantRef || "") : (/^[A-Za-z0-9_-]{1,40}:[A-Za-z0-9_-]{1,40}$/.test(it.wantRef) && !it.wantRef.startsWith(me.id + ":") ? it.wantRef : "");
     if (!it.wantRef) delete it.wantRef;
+    // Bestaande partij aangeboden op vragen ("Ik kan leveren" → deze partij): alleen toevoegen, met tijd van de server
+    const offered = { ...(was?.offeredTo || {}) };
+    for (const k of Object.keys(it0.offeredTo && typeof it0.offeredTo === "object" && !Array.isArray(it0.offeredTo) ? it0.offeredTo : {})) {
+      if (Object.keys(offered).length >= 50) break;
+      if (!offered[k] && /^[A-Za-z0-9_-]{1,40}:[A-Za-z0-9_-]{1,40}$/.test(k) && !k.startsWith(me.id + ":")) offered[k] = { at: nowIso };
+    }
+    if (Object.keys(offered).length) it.offeredTo = offered;
     // Foto's: alleen eigen foto's, maximaal 3
     const photos = Array.isArray(it0.photos) ? it0.photos.filter((x) => typeof x === "string").slice(0, 3) : [];
     for (const ph of photos) if (!ownPhotos.has(ph) && !(was?.photos || []).includes(ph)) throw httpError(403, "Je kunt alleen je eigen foto's gebruiken.");
@@ -1049,11 +1069,13 @@ async function normalizeWants(me, prev, data) {
     if (!validDate(w0.until)) throw httpError(400, `Kies tot wanneer je ${w.product} zoekt.`);
     w.until = w0.until;
     w.status = w0.status === "gesloten" ? "gesloten" : "open";
+    if (was?.closedBy === "beheer" && w.status !== "gesloten") throw httpError(403, `${w.product} is door de beheerder gesloten. Neem contact op met de beheerder.`);
     // Nieuwe of heropende vraag: datum mag niet in het verleden liggen
     if (w.status === "open" && (!was || was.until !== w.until || was.status === "gesloten") && w.until < t) throw httpError(400, `De datum bij ${w.product} ligt in het verleden.`);
     if (w.status === "gesloten") {
       w.closedReason = was?.status === "gesloten" ? was.closedReason : WANT_CLOSE.includes(w0.closedReason) ? w0.closedReason : "niet meer nodig";
       w.closedAt = was?.status === "gesloten" ? was.closedAt : nowIso;
+      if (was?.status === "gesloten" && was.closedBy) { w.closedBy = was.closedBy; if (was.closeReason) w.closeReason = was.closeReason; }
     }
     w.createdAt = was?.createdAt || nowIso;
     const same = was && ["product", "category", "unit", "klasse", "region", "note", "qty", "maxPrice", "until", "status"].every((k) => (was[k] ?? null) === (w[k] ?? null));
@@ -1088,19 +1110,28 @@ const qtyUnit = (n, unit) => `${new Intl.NumberFormat("nl-NL").format(n)} ${unit
 async function matchAfterLots(seller, prev, next, base) {
   const t = today(), a = prev?.items || {};
   const fresh = Object.entries(next?.items || {}).filter(([id, l]) => lotOpen(l, t) && (!a[id] || !lotOpen(a[id], t)));
-  if (!fresh.length) return;
+  // Op een vraag aangeboden: nieuwe partij met wantRef, of een bestaande partij met een nieuwe sleutel in offeredTo
+  const offers = [];
+  for (const [id, l] of Object.entries(next?.items || {})) {
+    if (!lotOpen(l, t)) continue;
+    if (!a[id] && l.wantRef) offers.push([id, l, l.wantRef]);
+    for (const k of Object.keys(l.offeredTo || {})) if (!a[id]?.offeredTo?.[k]) offers.push([id, l, k]);
+  }
+  if (!fresh.length && !offers.length) return;
   const wants = await allDocs("wants");
   const names = await q("SELECT company, name FROM rpb_users WHERE id = $1", [seller.id]);
   const sellerName = next.company || names.rows[0]?.company || names.rows[0]?.name || "Een aanbieder";
   const jobs = [], told = new Set();
+  const offerText = (l) => `${sellerName} biedt ${qtyUnit(l.remaining ?? l.qty, l.unit)} ${l.product}${l.ras ? " " + l.ras : ""} aan voor ${euro(l.price)} per ${UNIT1[l.unit] || l.unit}${l.location ? `, ophalen ${l.location}` : ""}.`;
+  for (const [lotId, l, key] of offers) {
+    const [buyer, wid] = key.split(":");
+    const w = wants.find((x) => x.id === buyer)?.data?.items?.[wid];
+    if (!w || !wantOpen(w, t) || told.has(key)) continue;
+    told.add(key); told.add(buyer + "|" + lotId);
+    jobs.push(() => Push.notify(buyer, "match", { title: `Reactie op je vraag: ${w.product}`, body: offerText(l), view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}`, urgency: "high" }, base));
+  }
   for (const [lotId, l] of fresh) {
-    const where = l.location ? `, ophalen ${l.location}` : "";
-    const offer = `${sellerName} biedt ${qtyUnit(l.remaining ?? l.qty, l.unit)} ${l.product}${l.ras ? " " + l.ras : ""} aan voor ${euro(l.price)} per ${UNIT1[l.unit] || l.unit}${where}.`;
-    const ref = !a[lotId] && l.wantRef ? l.wantRef.split(":") : null;
-    if (ref) {
-      const w = wants.find((x) => x.id === ref[0])?.data?.items?.[ref[1]];
-      if (w) { told.add(ref.join(":")); jobs.push(() => Push.notify(ref[0], "match", { title: `Reactie op je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}`, urgency: "high" }, base)); }
-    }
+    const offer = offerText(l);
     for (const row of wants) {
       if (row.id === seller.id) continue;
       for (const [wid, w] of Object.entries(row.data.items || {})) {
@@ -1145,8 +1176,12 @@ function lotsView(me, ownerId, data) {
   if (!data || me.role === "beheerder" || ownerId === me.id) return data;
   const items = {};
   for (const [id, it] of Object.entries(data.items || {})) {
-    const { accepted, rejected, withdrawReason, ...rest } = it || {};
+    const { accepted, rejected, withdrawReason, wantRef, offeredTo, ...rest } = it || {};
     const x = { ...rest };
+    // Aan wie een partij is aangeboden (vraag van een koper) ziet alleen die koper zelf
+    if (wantRef && wantRef.startsWith(me.id + ":")) x.wantRef = wantRef;
+    const mine = Object.entries(offeredTo || {}).filter(([k]) => k.startsWith(me.id + ":"));
+    if (mine.length) x.offeredTo = Object.fromEntries(mine);
     if (accepted?.[me.id]) x.accepted = { [me.id]: accepted[me.id] };
     if (rejected?.[me.id]) x.rejected = { [me.id]: rejected[me.id] };
     items[id] = x;
@@ -1170,6 +1205,7 @@ function bidsView(me, bidderId, data) {
 // ---------- FoodSource API v1 ----------
 const AI = createAi({ q, httpError, log, today });
 const Push = createPush({ q, log });
+const Cleanup = createCleanup({ q, readDoc, writeDocAt, log, today, getSettings });
 const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES, Push, afterLots: matchAfterLots });
 
 // ---------- routes ----------
@@ -1756,6 +1792,11 @@ async function route(req, ctx = {}) {
           for (const acc of Object.values(it.accepted || {})) { awards++; awardValue += (acc.qty || 0) * (acc.price || 0); }
         }
       }
+      // Partijen in het archief tellen mee (anders dalen de totalen na het opschonen)
+      for (const it of await Cleanup.archive()) {
+        lotsTotal++;
+        for (const acc of Object.values(it.accepted || {})) { awards++; awardValue += (acc.qty || 0) * (acc.price || 0); }
+      }
       const r0 = rev.rows[0], u0 = us.rows[0];
       return json(200, {
         today: t,
@@ -1822,6 +1863,29 @@ async function route(req, ctx = {}) {
         return json(200, { ok: true, scope, counts });
       }
       return json(200, { ok: true, scope, counts }, { "set-cookie": sessionCookie(req, "") });
+    }
+
+    // Opschonen: ruimte, met de hand starten, archief (voor statistieken) en export van alle partijen
+    if (b === "storage" && method === "GET") return json(200, await Cleanup.storage());
+    if (b === "cleanup" && method === "POST") {
+      await throttle("cleanup", ip, 10, 15);
+      const r = await Cleanup.run({ force: true });
+      return json(200, { ...r, storage: await Cleanup.storage() });
+    }
+    if (b === "archive" && method === "GET") return json(200, { lots: await Cleanup.archive() });
+    if (b === "export.csv" && method === "GET") {
+      const nr = await q("SELECT id, name, company FROM rpb_users");
+      const names = {}; for (const row of nr.rows) names[row.id] = row.company || row.name;
+      const live = [];
+      for (const r of (await q("SELECT id, data FROM rpb_docs WHERE collection = 'lots' AND data IS NOT NULL")).rows) {
+        for (const [id, it] of Object.entries(r.data?.items || {})) live.push({ ...it, id, sellerId: r.id, company: it.company || r.data.company });
+      }
+      const rows = [...(await Cleanup.archive()), ...live].sort((x, y) => String(x.createdAt || "").localeCompare(String(y.createdAt || "")));
+      await log(me, "beheer", `Export van alle partijen gedownload (${rows.length} regels)`);
+      return new Response(lotsCsv(rows, names, today()), { status: 200, headers: {
+        "content-type": "text/csv; charset=utf-8", "cache-control": "no-store",
+        "content-disposition": `attachment; filename="foodsource-partijen-${today()}.csv"`,
+      } });
     }
 
     // Testmail om de koppeling met Brevo te controleren
@@ -1910,7 +1974,16 @@ async function route(req, ctx = {}) {
       if (!Number.isInteger(priceCents) || priceCents < 0 || priceCents > 10000000) throw httpError(400, "Ongeldige abonnementsprijs. Vul een bedrag in, bijvoorbeeld 120 of 120,50.");
       const vat = body.vatPercent === undefined ? before.vatPercent : typeof body.vatPercent === "number" ? body.vatPercent : String(body.vatPercent).trim() === "" ? NaN : Number(String(body.vatPercent).replace(",", ".").trim());
       if (!Number.isFinite(vat) || vat < 0 || vat > 100) throw httpError(400, "Ongeldig btw-percentage. Vul een getal tussen 0 en 100 in.");
+      const days = (k) => {
+        if (body[k] === undefined || body[k] === null || body[k] === "") return before[k];
+        const n = Number(body[k]);
+        if (!Number.isInteger(n) || n < 0 || n > 3650) throw httpError(400, "Vul bij opschonen een aantal dagen in tussen 0 (nooit) en 3650.");
+        return n;
+      };
+      const cleanP = days("cleanupPhotoDays"), cleanL = days("cleanupLotDays");
+      if (cleanL > 0 && cleanL < 30) throw httpError(400, "Partijen naar het archief kan op zijn vroegst na 30 dagen.");
       const vals = {
+        cleanupPhotoDays: String(cleanP), cleanupLotDays: String(cleanL),
         siteName: str(body.siteName, 60) || SETTING_DEFAULTS.siteName,
         welcomeText: str(body.welcomeText, 1000),
         announcement: str(body.announcement, 500),
@@ -1931,6 +2004,37 @@ async function route(req, ctx = {}) {
       const changed = Object.keys(after).filter((k) => String(after[k]) !== String(before[k]));
       if (changed.length) await log(me, "beheer", `Website-instellingen gewijzigd: ${changed.join(", ")}`);
       return json(200, { settings: after });
+    }
+
+    // Vraag van een koper sluiten, heropenen of verwijderen
+    if (b === "wants" && method === "POST") {
+      const body = await readBody(req);
+      const buyerId = str(body.buyerId, 40), wantId = str(body.wantId, 60), action = body.action;
+      if (!["close", "reopen", "delete"].includes(action)) throw httpError(400, "Onbekende actie.");
+      const codes = (await getSettings()).reasonCodes;
+      const reason = action === "reopen" ? null : cleanReason(body.reason, codes, { required: true });
+      let w, saved = null;
+      for (let tryNo = 0; tryNo < 3 && !saved; tryNo++) { // opnieuw proberen als de koper tegelijk iets wijzigt
+        const cur = await readDoc("wants", buyerId);
+        const doc = cur.data;
+        w = doc?.items?.[wantId];
+        if (!w) throw httpError(404, "Vraag niet gevonden.");
+        if (action === "close") {
+          w.status = "gesloten"; w.closedReason = "door beheer"; w.closedBy = "beheer"; w.closedAt = new Date().toISOString();
+          w.closeReason = { code: reason.code, label: reason.label, ...(reason.note ? { note: reason.note } : {}) };
+        } else if (action === "reopen") {
+          if (!w.until || w.until < today()) throw httpError(409, "De datum van deze vraag is al voorbij. Laat de koper een nieuwe vraag plaatsen.");
+          w.status = "open"; for (const k of ["closedReason", "closedBy", "closedAt", "closeReason"]) delete w[k];
+        } else delete doc.items[wantId];
+        w.updatedAt = new Date().toISOString();
+        saved = await writeDocAt("wants", buyerId, cur, doc, me.id);
+      }
+      if (!saved) throw conflict();
+      const nr = await q("SELECT name, company FROM rpb_users WHERE id = $1", [buyerId]);
+      const owner = nr.rows[0] ? (nr.rows[0].company || nr.rows[0].name) : "onbekend";
+      const verb = { close: "gesloten", reopen: "heropend", delete: "verwijderd" }[action];
+      await log(me, "beheer", `Vraag van ${owner} ${verb}: ${num(w.qty)} ${w.unit} ${w.product}${reason ? ` — reden ${reason.code} ${reason.label}${reason.note ? ": " + reason.note : ""}` : ""}`);
+      return json(200, { ok: true });
     }
 
     // Partij van een ander intrekken, heropenen of verwijderen
@@ -1990,7 +2094,16 @@ async function route(req, ctx = {}) {
 
 // Webhooks afleveren: na een wijziging (op de achtergrond als Netlify dat kan) en elke 5 minuten
 // via de geplande functie webhooks.mjs (voor herhaalpogingen).
-export async function runWebhooks(limit = 20) { await ensureSchema(); return V1.deliverDue(limit); }
+export async function runWebhooks(limit = 20) {
+  await ensureSchema();
+  // Eén keer per nacht ook opschonen (foto's en oude partijen van afgesloten partijen)
+  try {
+    const hour = Number(new Intl.DateTimeFormat("nl-NL", { hour: "numeric", hourCycle: "h23", timeZone: "Europe/Amsterdam" }).format(new Date()));
+    const c = await Cleanup.daily(hour);
+    if (c) console.log("opschonen", c);
+  } catch (e) { console.error("opschonen", e); }
+  return V1.deliverDue(limit);
+}
 
 export default async (req, context) => {
   try {

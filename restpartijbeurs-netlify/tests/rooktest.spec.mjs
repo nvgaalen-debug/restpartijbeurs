@@ -306,6 +306,9 @@ test.describe("vraag en aanbod (alleen testomgeving)", () => {
     const card = page.locator(".want", { hasText: WANTED });
     await expect(card, "de vraag van de koper is niet zichtbaar bij de aanbieder").toBeVisible();
     await card.locator("[data-act=want-supply]").click();
+    // Heeft de aanbieder al lopende partijen, dan eerst de keuzelijst; de test zet een nieuwe partij online
+    await expect(page.locator("#dlg-lot[open], #dlg-supply[open]").first()).toBeVisible();
+    if (await page.locator("#dlg-supply[open]").count()) await page.click("#dlg-supply [data-act=supply-new]");
     await expect(page.locator("#dlg-lot")).toBeVisible();
     await expect(page.locator("#lot-want")).toBeVisible();
     await expect(page.locator("#f-product"), "'Ik kan leveren' vult het product niet in").toHaveValue(WANTED);
@@ -316,7 +319,7 @@ test.describe("vraag en aanbod (alleen testomgeving)", () => {
     await page.click("#lot-submit");
     await expect(page.locator("#dlg-lot")).toBeHidden();
     await expect(page.locator(".toast")).toContainText(/koper krijgt bericht/i);
-    await expect(card).toContainText("past al bij deze vraag");
+    await expect(card).toContainText("aangeboden; de koper ziet hem");
     expect(errors).toEqual([]);
     await ctx.close();
   });

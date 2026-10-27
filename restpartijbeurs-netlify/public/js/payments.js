@@ -92,6 +92,8 @@ function fillSettings() {
     ? `<span class="pill ok">Gekoppeld via ${s.mailProvider === "gmail" ? "Gmail" : "Brevo"}</span> Bij "Code vergeten?" krijgt een gebruiker een link op het e-mailadres van zijn account. Zonder bekend e-mailadres komt de melding hier bij Gebruikers.`
     : `<span class="pill off">Niet gekoppeld</span> Zet in Netlify <code>GMAIL_USER</code> (je Gmail-adres) en <code>GMAIL_APP_PASSWORD</code> (een app-wachtwoord van Google) en doe een nieuwe deploy. Tot die tijd komen meldingen "code vergeten" hier bij Gebruikers.`;
   $("#st-testmail-row").hidden = !s.mailEnabled;
+  $("#st-clean-photos").value = String(s.cleanupPhotoDays ?? 30); $("#st-clean-lots").value = String(s.cleanupLotDays ?? 0);
+  loadStorage();
   $("#wipe-panel").hidden = !s.wipeAllowed;
   $("#st-name").value = s.siteName || ""; $("#st-welcome").value = s.welcomeText || ""; $("#st-ann").value = s.announcement || "";
   $("#st-reg").checked = s.registrationOpen !== false; $("#st-price").value = ((s.subscriptionPrice || 0) / 100).toFixed(2).replace(".", ","); $("#st-subtext").value = s.subscriptionText || "";
@@ -111,6 +113,29 @@ $("#wipe-btn").addEventListener("click", async () => {
     toast(`Leeggemaakt: ${d.counts.rpb_photos} foto's en alle partijen en biedingen verwijderd.`);
   } catch (ex) { $("#wipe-err").textContent = ex.message; }
   finally { btn.disabled = false; }
+});
+// ---------- opschonen ----------
+function showStorage(d) {
+  const s = S.settings || {};
+  $("#st-storage").innerHTML = `<b>${num.format(d.photos)} foto's</b> (${String(d.mb).replace(".", ",")} MB) · ${num.format(d.closedLots)} afgesloten partijen, daarvan ${num.format(d.closedPhotos)} foto's`
+    + (s.cleanupPhotoDays > 0 ? ` · <b>${num.format(d.photosDue)}</b> foto's worden vannacht opgeruimd` : "")
+    + ` · ${num.format(d.archived)} ${d.archived === 1 ? "partij" : "partijen"} in het archief`;
+}
+async function loadStorage() { try { showStorage(await api("admin/storage")); } catch (e) { $("#st-storage").textContent = e.message; } }
+$("#st-clean-now").addEventListener("click", async () => {
+  const b = $("#st-clean-now"), s = S.settings || {};
+  if (Number($("#st-clean-photos").value) !== s.cleanupPhotoDays || Number($("#st-clean-lots").value) !== s.cleanupLotDays) { $("#st-clean-res").textContent = "Sla eerst de instellingen op (knop onderaan), dan opschonen."; return; }
+  if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Zeker?"; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Nu opschonen"; } }, 4000); return; }
+  b.dataset.sure = ""; b.textContent = "Nu opschonen"; b.disabled = true; $("#st-clean-res").textContent = "Bezig…";
+  try {
+    const d = await api("admin/cleanup", { method: "POST", timeout: 60000 });
+    const pl = (n, een, meer) => `${n} ${n === 1 ? een : meer}`;
+    $("#st-clean-res").textContent = d.photos || d.archived || d.wants
+      ? `Klaar: ${pl(d.photos, "foto", "foto's")} verwijderd, ${pl(d.archived, "partij", "partijen")} naar het archief, ${pl(d.wants, "oude vraag", "oude vragen")} opgeruimd.`
+      : "Klaar: er was niets op te ruimen.";
+    showStorage(d.storage); S.lastNow = ""; pull(true);
+  } catch (e) { $("#st-clean-res").textContent = e.message; }
+  finally { b.disabled = false; }
 });
 $("#st-testmail-btn").addEventListener("click", async () => {
   const btn = $("#st-testmail-btn"); btn.disabled = true; $("#st-testmail-res").textContent = "Versturen…";
@@ -132,6 +157,7 @@ $("#form-settings").addEventListener("submit", async (e) => {
     const d = await api("admin/settings", { method: "PUT", body: {
       siteName: $("#st-name").value, welcomeText: $("#st-welcome").value, announcement: $("#st-ann").value,
       registrationOpen: $("#st-reg").checked, subscriptionPriceCents: priceCents, subscriptionText: $("#st-subtext").value,
+      cleanupPhotoDays: Number($("#st-clean-photos").value), cleanupLotDays: Number($("#st-clean-lots").value),
       vatPercent: vat, autoApprovePaid: $("#st-auto").checked, requireSubscription: $("#st-require").checked, apiEnabled: $("#st-api").checked, aiEnabled: $("#st-ai").checked, payMethods: $$("input[name=st-pm]").filter((c) => c.checked).map((c) => c.value),
     } });
     applySettings(d.settings); fillSettings(); toast("Instellingen opgeslagen.");

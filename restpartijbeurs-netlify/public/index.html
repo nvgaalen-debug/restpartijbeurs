@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="app-version" content="b0ff2fce0d">
+<meta name="app-version" content="126d11c944">
 <title>Restpartijbeurs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css?v=b0ff2fce0d">
+<link rel="stylesheet" href="/app.css?v=126d11c944">
 <link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
 <link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
 <link rel="manifest" href="/api/manifest.webmanifest">
@@ -291,6 +291,7 @@
       <button type="button" data-apane="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>Statistieken</button>
       <button type="button" data-apane="users"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.8a3.3 3.3 0 0 1 0 6.4M18 14.8c1.9.7 3 2.4 3.5 5.2"/></svg>Gebruikers <span class="n alert" id="n-pending2" hidden></span></button>
       <button type="button" data-apane="lots"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/></svg>Restpartijen</button>
+      <button type="button" data-apane="wants"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/><path d="M8 10.5h5M10.5 8v5"/></svg>Vragen</button>
       <button type="button" data-apane="reasons"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>Redencodes</button>
       <button type="button" data-apane="log"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="3" y="14" width="5" height="5" rx="1"/><path d="M11 6h10M11 9h6M11 16h10M11 19h6"/></svg>Logboek</button>
       <button type="button" data-apane="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>Website-instellingen</button>
@@ -385,6 +386,16 @@
           <button class="chip" type="button" data-f="" aria-pressed="false">Alle</button>
         </div></div>
       <div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Partij</th><th>Aanbieder</th><th class="num">Beschikbaar</th><th class="num">Vraagprijs</th><th class="num">Biedingen</th><th>Houdbaar tot</th><th>Status</th><th></th></tr></thead><tbody id="alots-body"></tbody></table></div></div>
+    </div>
+
+    <div data-pane="wants" hidden>
+      <div class="pane-head"><h2>Vragen</h2>
+        <div class="chips" id="awants-filter">
+          <button class="chip" type="button" data-f="open" aria-pressed="true">Open</button>
+          <button class="chip" type="button" data-f="closed" aria-pressed="false">Gesloten of verlopen</button>
+          <button class="chip" type="button" data-f="" aria-pressed="false">Alle</button>
+        </div></div>
+      <div class="panel"><div class="tablewrap"><table class="bids"><thead><tr><th>Vraag</th><th>Koper</th><th class="num">Gevraagd</th><th>Nodig vóór</th><th class="num">Aanbod</th><th>Status</th><th></th></tr></thead><tbody id="awants-body"></tbody></table></div></div>
     </div>
 
     <div data-pane="reasons" hidden>
@@ -483,6 +494,23 @@
           <div class="form">
             <div class="field full"><div class="ct-card" id="st-ai-card"></div></div>
             <div class="field full"><label class="check" style="color:var(--ink);white-space:normal"><input type="checkbox" id="st-ai"> Velden van een partij laten voorstellen op basis van de eerste foto</label><span class="hint">De foto gaat naar Claude (Anthropic) om product, categorie, verpakking en meer te herkennen. De aanbieder controleert altijd zelf. Anthropic gebruikt API-gegevens niet om modellen te trainen.</span></div>
+          </div>
+        </details>
+        <details class="st-sec" data-sec="opschonen">
+          <summary><span class="st-sec-title">Opschonen</span><span class="st-sec-sub">Foto's en oude partijen opruimen, archief en export</span></summary>
+          <div class="form">
+            <div class="field full"><div class="ct-card" id="st-storage">Laden…</div></div>
+            <div class="field"><label for="st-clean-photos">Foto's van afgesloten partijen verwijderen na</label>
+              <select id="st-clean-photos"><option value="7">7 dagen</option><option value="14">14 dagen</option><option value="30">30 dagen</option><option value="60">60 dagen</option><option value="90">90 dagen</option><option value="180">180 dagen</option><option value="365">1 jaar</option><option value="0">nooit</option></select>
+              <span class="hint">De partij blijft bestaan (statistieken en gunningen blijven kloppen); alleen de foto's gaan weg. Foto's nemen de meeste ruimte in.</span></div>
+            <div class="field"><label for="st-clean-lots">Afgesloten partijen naar het archief na</label>
+              <select id="st-clean-lots"><option value="0">nooit</option><option value="180">6 maanden</option><option value="365">1 jaar</option><option value="730">2 jaar</option><option value="1095">3 jaar</option><option value="1825">5 jaar</option></select>
+              <span class="hint">De partij verdwijnt uit de app (ook uit Mijn partijen en Mijn biedingen). De cijfers blijven in het archief: statistieken en de export hieronder blijven kloppen.</span></div>
+            <div class="field full"><span class="hint">Afgesloten = verkocht, ingetrokken of verlopen. Opschonen gebeurt elke nacht vanzelf; gesloten of verlopen vragen gaan na 90 dagen weg. Wat er is opgeruimd staat in het logboek.</span></div>
+            <div class="field full"><div class="actions" style="justify-content:flex-start;flex-wrap:wrap">
+              <button class="btn small" type="button" id="st-clean-now">Nu opschonen</button>
+              <a class="btn small" id="st-export" href="/api/admin/export.csv" download>Alle partijen exporteren (CSV)</a>
+              <span class="hint" id="st-clean-res"></span></div></div>
           </div>
         </details>
         <details class="st-sec" data-sec="mail">
@@ -618,6 +646,16 @@
   <div class="dlg-head notes-head"><h2 tabindex="-1" autofocus>Meldingen</h2>
     <div class="actions"><button class="btn small ghost" type="button" id="notes-all">Alles gelezen</button><button class="btn small" type="button" data-close>Sluiten</button></div></div>
   <div class="notes-list" id="notes-list"></div>
+</dialog>
+
+<dialog id="dlg-supply" class="sheet supply">
+  <div class="dlg-head"><h2 tabindex="-1" autofocus>Ik kan leveren</h2><p id="sup-sub"></p></div>
+  <div class="form" style="grid-template-columns:1fr">
+    <div class="fieldset-title">Bied een partij aan die je al hebt</div>
+    <div class="sup-list" id="sup-list"></div>
+  </div>
+  <div class="dlg-foot"><span class="hint">Of iets anders?</span>
+    <div class="actions"><button class="btn" type="button" data-close>Annuleren</button><button class="btn" type="button" data-act="supply-new">Nieuwe partij aanbieden</button></div></div>
 </dialog>
 
 <dialog id="dlg-want" class="sheet">
@@ -791,19 +829,19 @@
 <datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
 <datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
 
-<script src="/js/core.js?v=b0ff2fce0d"></script>
-<script src="/js/update.js?v=b0ff2fce0d"></script>
-<script src="/js/market.js?v=b0ff2fce0d"></script>
-<script src="/js/ai.js?v=b0ff2fce0d"></script>
-<script src="/js/account.js?v=b0ff2fce0d"></script>
-<script src="/js/push.js?v=b0ff2fce0d"></script>
-<script src="/js/wants.js?v=b0ff2fce0d"></script>
-<script src="/js/notes.js?v=b0ff2fce0d"></script>
-<script src="/js/admin.js?v=b0ff2fce0d"></script>
-<script src="/js/payments.js?v=b0ff2fce0d"></script>
-<script src="/js/stats.js?v=b0ff2fce0d"></script>
-<script src="/js/integrations.js?v=b0ff2fce0d"></script>
-<script src="/js/brand.js?v=b0ff2fce0d"></script>
-<script src="/js/start.js?v=b0ff2fce0d"></script>
+<script src="/js/core.js?v=126d11c944"></script>
+<script src="/js/update.js?v=126d11c944"></script>
+<script src="/js/market.js?v=126d11c944"></script>
+<script src="/js/ai.js?v=126d11c944"></script>
+<script src="/js/account.js?v=126d11c944"></script>
+<script src="/js/push.js?v=126d11c944"></script>
+<script src="/js/wants.js?v=126d11c944"></script>
+<script src="/js/notes.js?v=126d11c944"></script>
+<script src="/js/admin.js?v=126d11c944"></script>
+<script src="/js/payments.js?v=126d11c944"></script>
+<script src="/js/stats.js?v=126d11c944"></script>
+<script src="/js/integrations.js?v=126d11c944"></script>
+<script src="/js/brand.js?v=126d11c944"></script>
+<script src="/js/start.js?v=126d11c944"></script>
 </body>
 </html>

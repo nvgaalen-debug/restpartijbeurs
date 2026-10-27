@@ -180,7 +180,7 @@ function enterApp(user) {
   let v = "market";
   try {
     const s = localStorage.getItem("rpb.view"); if (["mine", "bids", "wanted"].includes(s) || (s === "admin" && user.role === "beheerder")) v = s;
-    const ap = localStorage.getItem("rpb.apane"); if (["dash", "stats", "users", "lots", "reasons", "log", "settings"].includes(ap)) S.apane = ap;
+    const ap = localStorage.getItem("rpb.apane"); if (["dash", "stats", "users", "lots", "wants", "reasons", "log", "settings"].includes(ap)) S.apane = ap;
   } catch {}
   setView(v);
   render();

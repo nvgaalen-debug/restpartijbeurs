@@ -171,6 +171,7 @@ function refreshAdminPane(first) {
   if (p === "dash") loadStats();
   else if (p === "users") loadUsers();
   else if (p === "lots") renderAdminLots();
+  else if (p === "wants") renderAdminWants();
   else if (p === "stats") renderStats();
   else if (p === "log" && first) loadLog(true);
   else if (p === "settings" && first) fillSettings();
@@ -376,6 +377,55 @@ $("#alots-body").addEventListener("click", async (e) => {
     await api("admin/lots", { method: "POST", body: { sellerId: b.dataset.seller, lotId: b.dataset.lot, action: act, reason } });
     S.lastNow = ""; await pull(); renderAdminLots();
     toast({ withdraw: "Partij ingetrokken.", reopen: "Partij heropend.", delete: "Partij verwijderd." }[b.dataset.alot]);
+  } catch (err) { toast(err.message); }
+});
+
+// Vragen (alle kopers)
+let awantsFilter = "open";
+$("#awants-filter").addEventListener("click", (e) => {
+  const c = e.target.closest("[data-f]"); if (!c) return;
+  awantsFilter = c.dataset.f;
+  $$("#awants-filter .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === c)));
+  renderAdminWants();
+});
+function renderAdminWants() {
+  let ws = allWants();
+  if (awantsFilter === "open") ws = ws.filter((w) => wantIsOpen(w));
+  if (awantsFilter === "closed") ws = ws.filter((w) => !wantIsOpen(w));
+  ws.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  $("#awants-body").innerHTML = ws.map((w) => {
+    const st = wantState(w), hits = wantIsOpen(w) ? lotsForWant(w) : [];
+    const reacties = hits.filter((l) => isReaction(l, w)).length;
+    const why = w.closedBy === "beheer" && w.closeReason ? `<div class="sub">${esc(w.closeReason.code)} · ${esc(reasonText(w.closeReason))} (door beheer)</div>` : w.status === "gesloten" && w.closedReason ? `<div class="sub">${esc(w.closedReason)}</div>` : "";
+    return `<tr>
+      <td><b>${esc(w.product)}</b><div class="sub">${esc(w.category)} · ${w.klasse ? esc(w.klasse) : "elke klasse"}${w.region ? " · " + esc(w.region) : ""}</div>${w.note ? `<div class="sub">“${esc(w.note)}”</div>` : ""}</td>
+      <td>${esc(w.company) || "—"}${w.contact ? `<div class="sub" style="white-space:nowrap">${esc(w.contact)}</div>` : ""}</td>
+      <td class="num" style="white-space:nowrap">${num.format(w.qty)} ${esc(w.unit)}<div class="sub">${w.maxPrice > 0 ? "max " + euro.format(w.maxPrice) : "prijs in overleg"}</div></td>
+      <td style="white-space:nowrap">${fmtDate(w.until)}</td>
+      <td class="num">${hits.length}${reacties ? `<div class="sub">${reacties} reactie${reacties === 1 ? "" : "s"}</div>` : ""}</td>
+      <td><span class="pill ${st.cls}">${w.closedBy === "beheer" ? "Gesloten door beheer" : st.closed ? esc(st.label) : "Open"}</span>${why}</td>
+      <td class="num"><div class="actions" style="justify-content:flex-end;flex-wrap:nowrap">
+        ${w.status === "gesloten" ? `<button class="btn small" type="button" data-awant="reopen" data-buyer="${esc(w.buyerId)}" data-want="${esc(w.id)}">Heropenen</button>`
+          : `<button class="btn small" type="button" data-awant="close" data-buyer="${esc(w.buyerId)}" data-want="${esc(w.id)}">Sluiten</button>`}
+        <button class="btn small ghost" type="button" data-awant="delete" data-buyer="${esc(w.buyerId)}" data-want="${esc(w.id)}">Verwijderen</button>
+      </div></td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="sub">Geen vragen${awantsFilter === "open" ? " open" : awantsFilter === "closed" ? " gesloten of verlopen" : ""}.</td></tr>`;
+}
+$("#awants-body").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-awant]"); if (!b) return;
+  const act = b.dataset.awant;
+  const w = allWants().find((x) => x.id === b.dataset.want && x.buyerId === b.dataset.buyer);
+  let reason = null;
+  if (act !== "reopen") {
+    reason = await openReason(`Vraag ${w?.product || ""} ${act === "delete" ? "verwijderen" : "sluiten"}`,
+      act === "delete" ? `De vraag van ${w?.company || "de koper"} wordt definitief verwijderd. Waarom?` : `De vraag van ${w?.company || "de koper"} verdwijnt bij de aanbieders; de koper kan hem niet zelf heropenen. Waarom?`,
+      act === "delete" ? "Definitief verwijderen" : "Sluiten");
+    if (!reason) return;
+  }
+  try {
+    await api("admin/wants", { method: "POST", body: { buyerId: b.dataset.buyer, wantId: b.dataset.want, action: act, reason } });
+    S.lastNow = ""; await pull(); renderAdminWants();
+    toast({ close: "Vraag gesloten.", reopen: "Vraag heropend.", delete: "Vraag verwijderd." }[act]);
   } catch (err) { toast(err.message); }
 });
 

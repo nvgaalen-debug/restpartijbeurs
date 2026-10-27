@@ -29,14 +29,23 @@ function lotEnd(l) {
   if (untilEnd && untilEnd < t) return { kind: accs.length ? "deels" : "verlopen", at: untilEnd };
   return { kind: "open", at: null };
 }
+// Statistieken: lopende partijen plus het archief (opgeruimde partijen, alleen cijfers)
+const statLots = () => allLots().concat(S.archive || []);
+async function loadArchive() {
+  if (S.archiveBusy || (S.archiveAt && Date.now() - S.archiveAt < 300000)) return;
+  S.archiveBusy = true;
+  try { S.archive = (await api("admin/archive")).lots || []; S.archiveAt = Date.now(); if (S.archive.length) renderStats(); }
+  catch { /* geen archief: dan alleen de lopende partijen */ } finally { S.archiveBusy = false; }
+}
 function firstBidAt(l) {
+  if (l.archived) return Date.parse(l.firstBidAt) || null;
   let m = Infinity;
   for (const b of bidsFor(l.id)) { const x = Date.parse(b.at); if (x && x < m) m = x; }
   for (const a of Object.values(l.accepted || {})) { const x = Date.parse(a.at); if (x && x < m) m = x; }
   return m === Infinity ? null : m;
 }
 function computeStats(from, to) {
-  const lots = allLots().filter((l) => !ST.cat || l.category === ST.cat);
+  const lots = statLots().filter((l) => !ST.cat || l.category === ST.cat);
   const sales = [];
   for (const l of lots) {
     const kpu = kgPerUnit(l);
@@ -91,11 +100,12 @@ function deltaHtml(cur, prev, { lowerIsBetter = false, pct = false } = {}) {
 }
 
 function renderStats() {
+  loadArchive();
   if (S.view !== "admin" || S.apane !== "stats") return;
   const to = Date.now() + 1;
   let from;
   if (ST.period) from = to - ST.period * DAY;
-  else { const all = allLots().map((l) => Date.parse(l.createdAt)).filter(Boolean); from = all.length ? Math.min(...all) - DAY : to - 30 * DAY; }
+  else { const all = statLots().map((l) => Date.parse(l.createdAt)).filter(Boolean); from = all.length ? Math.min(...all) - DAY : to - 30 * DAY; }
   const cur = computeStats(from, to);
   const prev = ST.period ? computeStats(from - ST.period * DAY, from) : null;
   $("#st-asof").textContent = "Bijgewerkt " + new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
