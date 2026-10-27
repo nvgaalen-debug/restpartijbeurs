@@ -192,7 +192,7 @@ export function createPush({ q, log }) {
       for (const [buyer, acc] of Object.entries(it.accepted || {})) {
         if (a[id]?.accepted?.[buyer]) continue;
         const where = [it.location ? `Ophalen in ${it.location}` : "", it.until ? `vóór ${nlDate(it.until)}` : ""].filter(Boolean).join(" ");
-        jobs.push(notify(buyer, "awarded", {
+        jobs.push(() => notify(buyer, "awarded", {
           title: `Gegund: ${product}`,
           body: clip(`${names[seller.id] || "De aanbieder"} heeft je bod geaccepteerd: ${qtyTxt(acc.qty, it.unit)} à ${eur(acc.price)}.${where ? " " + where + "." : ""}`, 180),
           view: "bids", seller: seller.id, lot: id, tag: `aw-${id}`, urgency: "high",
@@ -200,14 +200,15 @@ export function createPush({ q, log }) {
       }
       for (const buyer of Object.keys(it.rejected || {})) {
         if (a[id]?.rejected?.[buyer]) continue;
-        jobs.push(notify(buyer, "rejected", {
+        jobs.push(() => notify(buyer, "rejected", {
           title: `Bod niet gegund: ${product}`,
           body: `${names[seller.id] || "De aanbieder"} heeft je bod op deze partij afgewezen. Kijk in het aanbod voor vergelijkbare partijen.`,
           view: "market", tag: `rj-${id}`,
         }, base));
       }
     }
-    await Promise.all(jobs);
+    // Na elkaar, niet tegelijk: elke melding gebruikt de database, en die heeft maar weinig verbindingen
+    for (const job of jobs) await job();
   }
   // Na het opslaan van biedingen door de koper: aanbieder hoort een nieuw of gewijzigd bod
   async function forBid(sellerId, lotId, lot, bid, buyerName, updated, base) {

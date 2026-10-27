@@ -65,12 +65,26 @@ function getPool() {
   const clean = url.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
   // Time-outs: liever een nette foutmelding dan een functie die blijft hangen
   const options = [PG_SCHEMA ? `-c search_path=${PG_SCHEMA}` : "", "-c statement_timeout=10000"].filter(Boolean).join(" ");
-  pool = new pg.Pool({ connectionString: clean, ssl, max: 3, idleTimeoutMillis: 10000, connectionTimeoutMillis: 8000, options });
+  // Eén verbinding per serverfunctie: Netlify draait per functie maar één verzoek tegelijk, en een functie die
+  // even niets doet houdt zijn verbindingen vast. Met meer per functie raakt de (gratis) database vol (fout 53300).
+  const max = Math.min(5, Math.max(1, Number(process.env.PG_POOL_MAX) || 1));
+  pool = new pg.Pool({ connectionString: clean, ssl, max, idleTimeoutMillis: 5000, connectionTimeoutMillis: 8000, options });
+  pool.on("error", (e) => console.error("database-verbinding verbroken", e.message)); // niet de hele functie laten vallen
   return pool;
 }
 
+// Database even vol of aan het herstarten? Twee keer kort opnieuw proberen voordat we een fout geven.
+const RETRY_CODES = new Set(["53300", "57P03", "08006", "08001"]);
 async function q(text, params = []) {
-  return getPool().query(text, params);
+  for (let i = 0; ; i++) {
+    try { return await getPool().query(text, params); }
+    catch (e) {
+      const retry = RETRY_CODES.has(e?.code) || /timeout exceeded when trying to connect|Connection terminated unexpectedly/i.test(e?.message || "");
+      if (!retry || i >= 2) throw e;
+      console.log("database bezet, opnieuw over", 300 * (i + 1) * (i + 1), "ms:", e.code || e.message);
+      await new Promise((r) => setTimeout(r, 300 * (i + 1) * (i + 1)));
+    }
+  }
 }
 
 // Verplaatst in één keer (één opdracht = alles of niets). Een tabel die al in het doelschema staat,
@@ -1075,7 +1089,7 @@ async function matchAfterLots(seller, prev, next, base) {
     const ref = !a[lotId] && l.wantRef ? l.wantRef.split(":") : null;
     if (ref) {
       const w = wants.find((x) => x.id === ref[0])?.data?.items?.[ref[1]];
-      if (w) { told.add(ref.join(":")); jobs.push(Push.notify(ref[0], "match", { title: `Reactie op je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}`, urgency: "high" }, base)); }
+      if (w) { told.add(ref.join(":")); jobs.push(() => Push.notify(ref[0], "match", { title: `Reactie op je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}`, urgency: "high" }, base)); }
     }
     for (const row of wants) {
       if (row.id === seller.id) continue;
@@ -1083,11 +1097,11 @@ async function matchAfterLots(seller, prev, next, base) {
         const key = `${row.id}:${wid}`;
         if (told.has(key) || told.has(row.id + "|" + lotId) || !wantMatchesLot(w, l, t)) continue;
         told.add(key); told.add(row.id + "|" + lotId);
-        jobs.push(Push.notify(row.id, "match", { title: `Aanbod past bij je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}` }, base));
+        jobs.push(() => Push.notify(row.id, "match", { title: `Aanbod past bij je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}` }, base));
       }
     }
   }
-  await Promise.all(jobs.slice(0, 100));
+  for (const job of jobs.slice(0, 100)) await job(); // na elkaar: weinig databaseverbindingen
 }
 // Nieuwe (of heropende) vraag: aanbieders met een passende partij krijgen een melding
 async function matchAfterWants(buyer, prev, next, base) {
@@ -1103,14 +1117,14 @@ async function matchAfterWants(buyer, prev, next, base) {
       if (!hit) continue;
       told.add(row.id + "|" + wid);
       const until = new Intl.DateTimeFormat("nl-NL", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(w.until + "T12:00:00Z"));
-      jobs.push(Push.notify(row.id, "match", {
+      jobs.push(() => Push.notify(row.id, "match", {
         title: "Er wordt gevraagd wat jij hebt",
         body: `Een koper zoekt ${qtyUnit(w.qty, w.unit)} ${w.product}${w.maxPrice ? " (max " + euro(w.maxPrice) + " per " + (UNIT1[w.unit] || w.unit) + ")" : ""}, vóór ${until}. Je partij ${hit.product} (${qtyUnit(hit.remaining ?? hit.qty, hit.unit)}) past daarbij.`,
         view: "wanted", want: `${buyer.id}:${wid}`, tag: `w-${wid}`,
       }, base));
     }
   }
-  await Promise.all(jobs.slice(0, 100));
+  for (const job of jobs.slice(0, 100)) await job(); // na elkaar: weinig databaseverbindingen
 }
 const UNIT1 = { colli: "collo", kg: "kg", pallets: "pallet", kisten: "kist", zakken: "zak" };
 
