@@ -315,7 +315,7 @@ body.locked header.top .tabs, body.locked header.top .user, body.locked #btn-new
 /* AGF-achtergrond op de startpagina */
 .bg-agf { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .5; display: none; }
 .bg-agf svg { width: 100%; height: 100%; display: block; }
-body.locked .bg-agf { display: block; }
+body.locked .bg-agf { display: none; } /* vervangen door de huisstijl-achtergrond (.bg-brand) */
 body.locked main { position: relative; z-index: 1; }
 body.locked .login { box-shadow: 0 12px 40px rgba(22, 36, 29, .16); }
 @media (prefers-color-scheme: dark) { .bg-agf { opacity: .22; } body.locked .login { box-shadow: 0 12px 40px rgba(0, 0, 0, .5); } }
@@ -550,3 +550,30 @@ dialog.detail .ld-body .label-strip { padding-left: 0; padding-right: 0; }
 /* filters nemen op de telefoon de rest van de chip-breedte in (Aardappelen is de langste) */
 @media (max-width: 600px) { #view-market .chips { grid-template-columns: .8fr 1fr .8fr 1.25fr; } }
 @media (pointer: coarse) { .search, select.sel { font-size: 16px; } } /* geen inzoomen op iPhone */
+
+/* ---------- achtergrond in de stijl van de handleiding: licht papier met zachte bollen ---------- */
+:root:not([data-theme="dark"]) { --bg: #F6F7FC; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101814; } }
+.bg-brand { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg-brand .orb { position: absolute; border-radius: 50%; }
+/* grote bol rechtsboven: cyaan → blauw → magenta-rand (zoals de omslag) */
+.bg-brand .o1 { width: min(78vw, 720px); aspect-ratio: 1; right: max(-160px, -12vw); top: 70px;
+  background: radial-gradient(circle at 30% 35%, rgba(74,218,255,.55), rgba(42,149,253,.35) 45%, rgba(236,8,163,.32) 78%, rgba(236,8,163,0) 80%); }
+/* kleine magenta bol ernaast */
+.bg-brand .o2 { width: min(18vw, 140px); aspect-ratio: 1; right: calc(min(78vw, 720px) * .62); top: 40px;
+  background: radial-gradient(circle at 35% 35%, rgba(236,8,163,.35), rgba(236,8,163,0) 70%); }
+/* zachte cyaan gloed linksonder voor evenwicht */
+.bg-brand .o3 { width: min(70vw, 620px); aspect-ratio: 1; left: -18vw; bottom: -22vw;
+  background: radial-gradient(circle at 50% 50%, rgba(74,218,255,.22), rgba(74,218,255,0) 70%); }
+main.wrap, footer { position: relative; z-index: 1; }
+/* ingelogd: gedempt, zodat tabellen en kaarten rustig leesbaar blijven */
+body:not(.locked) .bg-brand { opacity: .38; }
+body:not(.locked) .bg-brand .o1 { top: 140px; }
+@media (max-width: 600px) {
+  .bg-brand .o1 { width: 120vw; right: -45vw; top: 120px; }
+  .bg-brand .o2 { width: 26vw; right: 52vw; top: 90px; }
+  body:not(.locked) .bg-brand { opacity: .3; }
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bg-brand { opacity: .18; } }
+:root[data-theme="dark"] .bg-brand { opacity: .18; }
+@media print { .bg-brand { display: none !important; } }

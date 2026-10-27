@@ -49,7 +49,7 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | --- | --- |
 | `DATABASE_URL` | Dezelfde waarde als bij de Vloeren Kassa-site (de Service URI van Aiven). Markeer als secret. |
 | `PG_SSL_INSECURE` | `true`, net als bij de kassa. Of gebruik `PG_SSL_CA` met het CA-certificaat uit Aiven. |
-| `RPB_SETUP_CODE` | Een zelfbedachte code van minstens 16 tekens. Alleen nodig om de eerste beheerder aan te maken. |
+| `RPB_SETUP_CODE` | Installatiecode: zelfbedacht, minstens 16 tekens, per omgeving een andere. Nodig om de eerste beheerder aan te maken, om een beheerder te herstellen die zijn code kwijt is, en als extra bevestiging bij leegmaken. Laat hem staan. |
 | `MOLLIE_API_KEY` | Optioneel. De API-sleutel uit je Mollie-dashboard (`test_...` om te testen, `live_...` voor echte betalingen). Markeer als secret. Zonder deze sleutel registreert de beheerder betalingen handmatig. |
 | `APP_ENV` | Alleen in de testomgeving: `test`. Toont een oranje balk "TESTOMGEVING". |
 | `PG_MIGRATE_FROM` | Eenmalig, alleen bij Production: `public`. Verplaatst de bestaande Restpartijbeurs-tabellen naar het schema van `PG_SCHEMA`. Na één keer openen van de app weer weghalen. Werkt nooit in de testomgeving. |
@@ -69,7 +69,7 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 2. Vul `RPB_SETUP_CODE`, je naam, bedrijf, contact en een eigen code in.
 3. Ga naar **Beheer** en maak voor elke handelaar een account aan. Geef de naam en code persoonlijk door.
 
-Na de eerste beheerder werkt `RPB_SETUP_CODE` niet meer; je mag hem laten staan of verwijderen.
+Na de eerste beheerder kan niemand met `RPB_SETUP_CODE` nog een beheerder aanmaken. Laat de code wel staan: je hebt hem nodig om een beheerder te herstellen en om een omgeving leeg te maken.
 
 ## Test- en productieomgeving
 
