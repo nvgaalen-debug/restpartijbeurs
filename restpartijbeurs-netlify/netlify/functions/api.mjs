@@ -43,13 +43,13 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
-const SCHEMA_VERSION = "2026-10-27a"; // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
+const SCHEMA_VERSION = "2026-10-27b"; // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 // Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
 // Alleen tabellen van de Restpartijbeurs (vaste lijst), nooit die van een andere app (zoals records van Vloeren Kassa).
 const PG_MIGRATE_FROM = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_MIGRATE_FROM || "") ? process.env.PG_MIGRATE_FROM : "";
-const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets", "rpb_push"];
+const RPB_TABLES = ["rpb_users", "rpb_sessions", "rpb_docs", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_photos", "rpb_attempts", "rpb_resets", "rpb_api_keys", "rpb_events", "rpb_assets", "rpb_push", "rpb_notes"];
 
 export function setPool(p) { pool = p; schemaReady = null; } // voor tests
 
@@ -248,6 +248,18 @@ async function ensureSchema() {
         fails INTEGER NOT NULL DEFAULT 0
       )`);
       await q("CREATE INDEX IF NOT EXISTS rpb_push_user ON rpb_push (user_id)");
+      // Meldingenlijst in de app (belletje): nieuw bod, gegund, vraag en aanbod …
+      await q(`CREATE TABLE IF NOT EXISTS rpb_notes (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        link JSONB,
+        created_at TIMESTAMPTZ NOT NULL,
+        read_at TIMESTAMPTZ
+      )`);
+      await q("CREATE INDEX IF NOT EXISTS rpb_notes_user ON rpb_notes (user_id, id)");
       await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
   }
@@ -470,8 +482,8 @@ async function getSettings() {
 
 // Leegmaken mag standaard alleen in de testomgeving
 function wipeAllowed() { return process.env.APP_ENV === "test" || process.env.ALLOW_WIPE === "true"; }
-const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events"];
-const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_push", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
+const TRADE_TABLES = ["rpb_docs", "rpb_photos", "rpb_events", "rpb_notes"];
+const ALL_TABLES = ["rpb_docs", "rpb_photos", "rpb_assets", "rpb_events", "rpb_push", "rpb_notes", "rpb_api_keys", "rpb_payments", "rpb_mollie", "rpb_log", "rpb_settings", "rpb_attempts", "rpb_resets", "rpb_sessions", "rpb_users"];
 
 // ---------- e-mail: via Gmail (SMTP) of via Brevo ----------
 const MAIL_BASE = process.env.MAIL_API_BASE || "https://api.brevo.com/v3";
@@ -1523,6 +1535,7 @@ async function route(req, ctx = {}) {
   // Mijn account → API-koppelingen: sleutels en webhook
   // Pushmeldingen op dit toestel aan/uit en keuzes
   if (a === "push") return Push.route(req, me, parts, readBody, json, httpError, siteUrl(req));
+  if (a === "notes") return Push.notesRoute(req, me, parts, readBody, json, httpError);
   if (a === "keys" || a === "webhook") { ctx.kick = b === "retry"; return V1.account(req, me, parts, readBody); }
 
   // Alle partijen en biedingen (of alleen wat er sinds 'since' veranderde)
@@ -1561,7 +1574,8 @@ async function route(req, ctx = {}) {
       const rc = await q("SELECT COUNT(*)::int AS n FROM rpb_resets WHERE handled_at IS NULL AND token_hash IS NULL");
       pendingCount += Number(rc.rows[0].n);
     }
-    return json(200, { now: now.toISOString(), full: !since, docs, market, profiles, pendingCount });
+    const notesUnread = await Push.unreadCount(me.id);
+    return json(200, { now: now.toISOString(), full: !since, docs, market, profiles, pendingCount, notesUnread });
   }
 
   // Eigen document schrijven: /api/doc/lots of /api/doc/bids
@@ -1968,6 +1982,8 @@ export default async (req, context) => {
     const msg = String((e && e.message) || e);
     const dbProblem = /certificate|ECONN|ETIMEDOUT|ENOTFOUND|connect|terminat|timeout|password authentication|SQL:/i.test(msg) || (e && typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code));
     const hint = /certificate/i.test(msg) ? " (certificaat: zie PG_SSL_CA / PG_SSL_INSECURE)" : "";
-    return json(500, { error: dbProblem ? "Database niet bereikbaar" + hint + ". Probeer het over een minuut opnieuw." : "Er ging iets mis op de server. Probeer het opnieuw; blijft het misgaan, meld het dan bij de beheerder." });
+    // Korte code erbij (bijv. 53300 = te veel verbindingen, 57014 = te lang bezig): zo is in een melding of rooktest te zien wát er misging
+    const code = e && typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : /timeout/i.test(msg) ? "time-out" : /ECONN|ENOTFOUND|terminat/i.test(msg) ? "geen verbinding" : "";
+    return json(500, { error: dbProblem ? "Database niet bereikbaar" + hint + (code ? ` (${code})` : "") + ". Probeer het over een minuut opnieuw." : "Er ging iets mis op de server. Probeer het opnieuw; blijft het misgaan, meld het dan bij de beheerder." });
   }
 };

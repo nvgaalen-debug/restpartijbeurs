@@ -11,6 +11,8 @@ self.addEventListener("push", (e) => {
     // App staat open en zichtbaar: daar ook tonen (een iPhone laat dan zelf geen banner zien)
     const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const c of list) if (c.visibilityState === "visible") c.postMessage({ type: "rpb-push", title, body: m.body || "", view: m.view || "", seller: m.seller || "", lot: m.lot || "", want: m.want || "" });
+    // Rood getal op het app-icoon (iPhone vanaf iOS 16.4, Android, computer)
+    if (m.badge > 0 && self.navigator.setAppBadge) { try { await self.navigator.setAppBadge(m.badge); } catch {} }
     // Altijd ook een echte melding (verplicht: anders trekt Safari het abonnement in)
     await self.registration.showNotification(title, {
     body: m.body || "",

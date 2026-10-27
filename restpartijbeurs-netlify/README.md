@@ -15,6 +15,7 @@ bewaart de gegevens in dezelfde Aiven-database als Vloeren Kassa, in eigen tabel
 | `public/js/account.js` | Inloggen, account aanvragen, code vergeten, mijn account |
 | `public/js/push.js`, `public/sw.js` | Pushmeldingen: aanzetten in Mijn account, service worker die de melding toont |
 | `public/js/wants.js` | Gevraagd: vragen van kopers, "Ik kan leveren", passend aanbod |
+| `public/js/notes.js` | Belletje met meldingenlijst; rood getal op het app-icoon |
 | `public/js/admin.js` | Beheer: dashboard, gebruikers, redencodes, betalingen, logboek, instellingen |
 | `public/js/payments.js` | Abonnement online betalen (Mollie) |
 | `public/js/stats.js` | Beheer: statistieken |
@@ -119,6 +120,10 @@ Waar het werkt:
 - **iPhone en iPad** (iOS 16.4 of nieuwer): alleen als de site op het beginscherm staat en vanaf dat icoon is geopend. De app laat de stappen zelf zien.
 
 Bij uitloggen wordt het toestel afgemeld.
+
+**Meldingenlijst en getal op het app-icoon.** Elke melding wordt ook bewaard. Rechtsboven staat een belletje met het aantal nieuwe meldingen. Daaronder staat de lijst met de laatste 50, ook als pushmeldingen uit staan of de melding op de telefoon is weggetikt. Tik je een melding aan, dan opent de app op de juiste plek. Openen van de lijst markeert de meldingen als gelezen. Op het app-icoon staat een rood getal met het aantal ongelezen meldingen; dat verdwijnt zodra je de app opent. Dit werkt op een iPhone vanaf iOS 16.4, en op Android en de computer als de browser het ondersteunt. De lijst staat in de tabel `rpb_notes`: maximaal 100 meldingen per gebruiker, 90 dagen bewaard. Endpoints: `GET /api/notes` en `POST /api/notes/read` met `{id}` of `{all: true}`.
+
+**Testmelding.** Die komt na 5 seconden, zodat je de app kunt sluiten; een iPhone toont geen banner van een app die open is. Staat de app open, dan verschijnt een melding als balkje bovenin. In Netlify staat bij Logs → Functions → api per melding een regel `push …` met het antwoord van de pushdienst. `push web.push.apple.com 201 ok` betekent dat Apple hem heeft aangenomen.
 
 **Niets in te stellen.** De server maakt bij het eerste gebruik zelf een sleutelpaar (VAPID) en bewaart dat in de database (`rpb_settings`, sleutel `_vapid`). Test en productie hebben elk een eigen schema en dus eigen sleutels, zodat een testmelding nooit bij echte klanten komt. Wie de sleutels zelf wil beheren, zet `VAPID_PUBLIC_KEY` en `VAPID_PRIVATE_KEY` (base64url) in Netlify. Vervang die daarna niet meer, want dan moet iedereen meldingen opnieuw aanzetten.
 

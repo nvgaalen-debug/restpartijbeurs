@@ -635,3 +635,29 @@ body:not(.locked) .bg-brand .o1 { top: 140px; }
   #want-chips { gap: 6px; }
   #want-chips .chip { padding: 6px 11px; font-size: 13.5px; }
 }
+
+/* Belletje en meldingenlijst */
+.user button.bell { position: relative; background: none; border: 0; cursor: pointer; padding: 6px; border-radius: var(--r); color: var(--ink); display: inline-flex; }
+.user button.bell:hover { background: var(--bg); }
+.bell svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bell-n { position: absolute; top: 0; right: -2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+dialog.notes { width: min(460px, calc(100vw - 24px)); }
+.notes-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.notes-list { display: grid; gap: 2px; padding: 4px 8px 12px; max-height: 70vh; overflow: auto; }
+.note-item { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; text-align: left; width: 100%; border: 0; background: none; padding: 10px 8px; border-radius: var(--r); cursor: pointer; font: inherit; color: inherit; }
+.note-item:hover { background: var(--bg); }
+.note-item.unread { background: var(--accent-soft); }
+.note-ico { width: 34px; height: 34px; border-radius: 50%; background: var(--bg); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.note-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.k-awarded .note-ico { color: var(--ok); background: var(--ok-soft); }
+.k-match .note-ico { color: var(--accent); background: var(--accent-soft); }
+.note-txt { display: grid; gap: 2px; min-width: 0; }
+.note-txt b { font-size: 14.5px; }
+.note-txt span { font-size: 13.5px; color: var(--muted); overflow-wrap: anywhere; }
+.note-txt small { font-size: 12px; color: var(--muted); }
+.notes-empty { display: grid; gap: 4px; padding: 24px 12px; color: var(--muted); text-align: center; }
+.notes-empty b { color: var(--ink); }
+@media (max-width: 600px) {
+  dialog.notes .notes-list { max-height: none; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  dialog.sheet.notes .dlg-head h2 { font-size: 22px; }
+}

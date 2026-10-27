@@ -10,6 +10,7 @@ export const PUSH_KINDS = ["bid", "awarded", "rejected", "match"];
 const DEFAULT_PREFS = { bid: true, awarded: true, rejected: true, match: true };
 const MAX_DEVICES = 10;
 const TIMEOUT_MS = 4000;
+const MAX_NOTES = 100, NOTE_DAYS = 90; // meldingenlijst: hoogstens 100 per gebruiker, 90 dagen
 const TEST_DELAY_MS = Number(process.env.PUSH_TEST_DELAY_MS ?? 5000); // binnen de 10 s die een Netlify-functie mag duren
 // Alleen de bekende pushdiensten van Apple, Google, Mozilla en Microsoft (geen willekeurige adressen)
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^([a-z0-9-]+\.)*push\.apple\.com$/, /^([a-z0-9-]+\.)*notify\.windows\.com$/];
@@ -115,10 +116,21 @@ export function createPush({ q, log }) {
   }
 
   // Melding naar alle toestellen van een gebruiker die dit soort melding aan hebben staan
+  // Ook bewaard in de meldingenlijst van de app (belletje), ongeacht de keuzes per toestel
   async function notify(userId, kind, msg, base) {
     if (!userId) return 0;
-    const r = await q(`SELECT p.* FROM rpb_push p JOIN rpb_users u ON u.id = p.user_id
-      WHERE p.user_id = $1 AND u.active = TRUE AND u.pending = FALSE`, [userId]);
+    const u = (await q("SELECT active, pending FROM rpb_users WHERE id = $1", [userId])).rows[0];
+    if (!u || !u.active || u.pending) return 0;
+    const link = { view: msg.view || "", seller: msg.seller || "", lot: msg.lot || "", want: msg.want || "" };
+    await q("INSERT INTO rpb_notes (user_id, kind, title, body, link, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6)",
+      [userId, kind, String(msg.title || "").slice(0, 120), String(msg.body || "").slice(0, 300), JSON.stringify(link), new Date()]);
+    if (Math.random() < 0.1) {
+      await q(`DELETE FROM rpb_notes WHERE user_id = $1 AND (created_at < $2 OR id NOT IN (SELECT id FROM rpb_notes WHERE user_id = $1 ORDER BY id DESC LIMIT ${MAX_NOTES}))`,
+        [userId, new Date(Date.now() - NOTE_DAYS * 86400000)]);
+    }
+    // Rood getal op het app-icoon: aantal ongelezen meldingen
+    msg = { ...msg, badge: await unreadCount(userId) };
+    const r = await q("SELECT * FROM rpb_push WHERE user_id = $1", [userId]);
     const rows = r.rows.filter((x) => (x.prefs || DEFAULT_PREFS)[kind] !== false);
     if (!rows.length) { console.log(`push: geen toestel met meldingen aan voor ${userId} (${kind}; ${r.rows.length} toestel(len) aangemeld)`); return 0; }
     const out = await Promise.all(rows.map((row) => sendTo(row, msg, base).catch((e) => ({ ok: false, error: e.message }))));
@@ -134,6 +146,30 @@ export function createPush({ q, log }) {
       }
     }
     return sent;
+  }
+
+  async function unreadCount(userId) {
+    return Number((await q("SELECT COUNT(*)::int AS n FROM rpb_notes WHERE user_id = $1 AND read_at IS NULL", [userId])).rows[0].n);
+  }
+  // ---------- meldingenlijst: /api/notes ----------
+  async function notesRoute(req, me, parts, readBody, json, httpError) {
+    const [, b] = parts;
+    if (!b && req.method === "GET") {
+      const r = await q("SELECT id, kind, title, body, link, created_at, read_at FROM rpb_notes WHERE user_id = $1 ORDER BY id DESC LIMIT 50", [me.id]);
+      return json(200, {
+        notes: r.rows.map((x) => ({ id: String(x.id), kind: x.kind, title: x.title, body: x.body, link: x.link || {}, at: new Date(x.created_at).toISOString(), read: !!x.read_at })),
+        unread: await unreadCount(me.id),
+      });
+    }
+    // Gelezen: één melding ({id}) of alles ({all: true})
+    if (b === "read" && req.method === "POST") {
+      const body = await readBody(req);
+      if (body.all) await q("UPDATE rpb_notes SET read_at = $2 WHERE user_id = $1 AND read_at IS NULL", [me.id, new Date()]);
+      else if (/^\d{1,18}$/.test(String(body.id || ""))) await q("UPDATE rpb_notes SET read_at = $3 WHERE user_id = $1 AND id = $2 AND read_at IS NULL", [me.id, String(body.id), new Date()]);
+      else throw httpError(400, "Ongeldige melding.");
+      return json(200, { ok: true, unread: await unreadCount(me.id) });
+    }
+    throw httpError(404, "Onbekend verzoek.");
   }
 
   // ---------- teksten ----------
@@ -251,5 +287,5 @@ export function createPush({ q, log }) {
     throw httpError(404, "Onbekend verzoek.");
   }
 
-  return { notify, forLots, forBid, route, vapid };
+  return { notify, forLots, forBid, route, vapid, notesRoute, unreadCount };
 }

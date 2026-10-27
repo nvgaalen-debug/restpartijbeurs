@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="app-version" content="0947e21651">
+<meta name="app-version" content="8ac29ebcd5">
 <title>Restpartijbeurs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css?v=0947e21651">
+<link rel="stylesheet" href="/app.css?v=8ac29ebcd5">
 <link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
 <link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
 <link rel="manifest" href="/api/manifest.webmanifest">
@@ -121,6 +121,7 @@
       <div class="brand"><img class="brand-logo" id="site-logo" alt="" hidden><h1 id="site-name">Restpartijbeurs</h1><span id="site-tagline">Aardappelen · groente · fruit</span></div>
       <div class="right">
         <div class="user" id="user-box" hidden>
+          <button class="bell" id="btn-notes" type="button" aria-label="Meldingen" title="Meldingen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg><span class="bell-n" id="n-notes" hidden>0</span></button>
           <button class="who" id="btn-account" type="button" title="Mijn account"></button>
           <button class="btn small ghost" id="btn-logout" type="button">Uitloggen</button>
         </div>
@@ -613,6 +614,12 @@
   <div class="lb-count" id="lb-count"></div>
 </dialog>
 
+<dialog id="dlg-notes" class="sheet notes">
+  <div class="dlg-head notes-head"><h2 tabindex="-1" autofocus>Meldingen</h2>
+    <div class="actions"><button class="btn small ghost" type="button" id="notes-all">Alles gelezen</button><button class="btn small" type="button" data-close>Sluiten</button></div></div>
+  <div class="notes-list" id="notes-list"></div>
+</dialog>
+
 <dialog id="dlg-want" class="sheet">
   <form id="form-want" novalidate>
     <div class="dlg-head"><h2 id="want-title" tabindex="-1" autofocus>Vraag plaatsen</h2><p>Laat aanbieders weten wat je zoekt. Past er een partij bij, dan krijg je een melding.</p></div>
@@ -784,18 +791,19 @@
 <datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
 <datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
 
-<script src="/js/core.js?v=0947e21651"></script>
-<script src="/js/update.js?v=0947e21651"></script>
-<script src="/js/market.js?v=0947e21651"></script>
-<script src="/js/ai.js?v=0947e21651"></script>
-<script src="/js/account.js?v=0947e21651"></script>
-<script src="/js/push.js?v=0947e21651"></script>
-<script src="/js/wants.js?v=0947e21651"></script>
-<script src="/js/admin.js?v=0947e21651"></script>
-<script src="/js/payments.js?v=0947e21651"></script>
-<script src="/js/stats.js?v=0947e21651"></script>
-<script src="/js/integrations.js?v=0947e21651"></script>
-<script src="/js/brand.js?v=0947e21651"></script>
-<script src="/js/start.js?v=0947e21651"></script>
+<script src="/js/core.js?v=8ac29ebcd5"></script>
+<script src="/js/update.js?v=8ac29ebcd5"></script>
+<script src="/js/market.js?v=8ac29ebcd5"></script>
+<script src="/js/ai.js?v=8ac29ebcd5"></script>
+<script src="/js/account.js?v=8ac29ebcd5"></script>
+<script src="/js/push.js?v=8ac29ebcd5"></script>
+<script src="/js/wants.js?v=8ac29ebcd5"></script>
+<script src="/js/notes.js?v=8ac29ebcd5"></script>
+<script src="/js/admin.js?v=8ac29ebcd5"></script>
+<script src="/js/payments.js?v=8ac29ebcd5"></script>
+<script src="/js/stats.js?v=8ac29ebcd5"></script>
+<script src="/js/integrations.js?v=8ac29ebcd5"></script>
+<script src="/js/brand.js?v=8ac29ebcd5"></script>
+<script src="/js/start.js?v=8ac29ebcd5"></script>
 </body>
 </html>
