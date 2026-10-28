@@ -332,6 +332,7 @@ test.describe("vraag en aanbod (alleen testomgeving)", () => {
     const card = page.locator(".want.mine", { hasText: WANTED });
     const hit = card.locator(".want-hit", { hasText: "Reactie" });
     await expect(hit, "de reactie van de aanbieder staat niet bij de vraag").toBeVisible();
+    await expect(hit.locator(".mscore"), "geen matchscore (percentage) bij de reactie").toHaveText(/^\d+%$/);
     await hit.click();
     await expect(page.locator("#dlg-lotdetail")).toBeVisible();
     await expect(page.locator("#ld-body")).toContainText("Reactie op jouw vraag");

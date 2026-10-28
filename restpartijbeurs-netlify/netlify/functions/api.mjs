@@ -26,7 +26,8 @@ import { createV1 } from "../lib/foodsource-v1.mjs";
 import { createAi, aiConfigured, aiModel } from "../lib/ai-photo.mjs";
 import { createPush } from "../lib/push.mjs";
 import { createCleanup, lotsCsv } from "../lib/cleanup.mjs";
-import { wantMatchesLot, lotOpen, wantOpen, productMatch } from "../lib/match.mjs";
+import { wantMatchesLot, matchScore, lotOpen, wantOpen, productMatch } from "../lib/match.mjs";
+import { createGeo, placeKey } from "../lib/geo.mjs";
 
 export const config = { path: "/api/*" };
 
@@ -44,7 +45,7 @@ const COOKIE = "rpb_s";              // sessiecookie (HttpOnly, niet leesbaar vo
 // ---------- database ----------
 let pool = null;
 let schemaReady = null;
-const SCHEMA_VERSION = "2026-10-27c"; // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
+const SCHEMA_VERSION = "2026-10-27d"; // rpb_geo (plaats → coördinaten) // vragen gebruiken rpb_docs: geen nieuwe tabel // verhogen bij elke wijziging in ensureSchema
 // Testomgeving: eigen schema in dezelfde database, zodat test- en echte gegevens gescheiden blijven
 const PG_SCHEMA = /^[a-z_][a-z0-9_]{0,40}$/.test(process.env.PG_SCHEMA || "") ? process.env.PG_SCHEMA : "";
 // Eenmalige verhuizing: PG_MIGRATE_FROM=public verplaatst de bestaande rpb_-tabellen naar PG_SCHEMA.
@@ -292,6 +293,15 @@ async function ensureSchema() {
         closed_on TEXT NOT NULL,
         archived_at TIMESTAMPTZ NOT NULL,
         data JSONB NOT NULL
+      )`);
+      // Plaats of postcode → coördinaten (PDOK), voor de afstand bij vraag en aanbod
+      await q(`CREATE TABLE IF NOT EXISTS rpb_geo (
+        key TEXT PRIMARY KEY,
+        lat DOUBLE PRECISION,
+        lon DOUBLE PRECISION,
+        place TEXT,
+        found BOOLEAN NOT NULL,
+        at TIMESTAMPTZ NOT NULL
       )`);
       await q("INSERT INTO rpb_settings (key, value) VALUES ('_schema', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [SCHEMA_VERSION]);
     })().catch((e) => { schemaReady = null; throw e; });
@@ -910,6 +920,7 @@ async function normalizeLots(me, prev, data) {
     return bidDocs.get(bidder)?.offers?.[lotId] || null;
   };
   const items = {};
+  const geoBudget = { n: 10 }; // hoogstens 10 nieuwe plaatsen per keer opzoeken; de rest vult de geplande functie aan
   for (const id of ids) {
     const it0 = raw[id], was = old[id];
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || !it0 || typeof it0 !== "object" || Array.isArray(it0)) throw httpError(400, "Ongeldige partij.");
@@ -931,6 +942,9 @@ async function normalizeLots(me, prev, data) {
     const kg = num(it0.kgPerUnit);
     it.kgPerUnit = kg > 0 && kg <= 100000 ? kg : null;
     it.until = validDate(it0.until) ? it0.until : "";
+    // Plaats → coördinaten (alleen de server zet dit; ongewijzigde plaats: oude waarde houden)
+    const geo = was && was.location === it.location ? was.geo || null : await Geo.lookup(it.location, geoBudget);
+    if (geo) it.geo = geo;
     // Reactie op een vraag ("koper:vraag"): alleen bij het aanmaken te zetten, daarna vast
     it.wantRef = was ? (was.wantRef || "") : (/^[A-Za-z0-9_-]{1,40}:[A-Za-z0-9_-]{1,40}$/.test(it.wantRef) && !it.wantRef.startsWith(me.id + ":") ? it.wantRef : "");
     if (!it.wantRef) delete it.wantRef;
@@ -1058,7 +1072,7 @@ async function normalizeWants(me, prev, data) {
   if (Object.keys(raw).length > 300) throw httpError(413, "Te veel vragen. Sluit oude vragen af.");
   const old = prev?.items || {};
   const nowIso = new Date().toISOString(), t = today();
-  const items = {};
+  const items = {}, geoBudget = { n: 10 };
   for (const [id, w0] of Object.entries(raw)) {
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || !w0 || typeof w0 !== "object" || Array.isArray(w0)) throw httpError(400, "Ongeldige vraag.");
     const was = old[id];
@@ -1074,6 +1088,11 @@ async function normalizeWants(me, prev, data) {
     w.maxPrice = mp;
     if (!validDate(w0.until)) throw httpError(400, `Kies tot wanneer je ${w.product} zoekt.`);
     w.until = w0.until;
+    const mk = w0.maxKm === null || w0.maxKm === "" || w0.maxKm === undefined ? null : num(w0.maxKm);
+    if (mk !== null && !(mk >= 1 && mk <= 1000)) throw httpError(400, `Vul bij ${w.product} een maximale afstand tussen 1 en 1000 km in, of laat het leeg.`);
+    w.maxKm = mk === null ? null : Math.round(mk);
+    const geo = was && was.region === w.region ? was.geo || null : await Geo.lookup(w.region, geoBudget);
+    if (geo) w.geo = geo;
     w.status = w0.status === "gesloten" ? "gesloten" : "open";
     if (was?.closedBy === "beheer" && w.status !== "gesloten") throw httpError(403, `${w.product} is door de beheerder gesloten. Neem contact op met de beheerder.`);
     // Nieuwe of heropende vraag: datum mag niet in het verleden liggen
@@ -1084,7 +1103,7 @@ async function normalizeWants(me, prev, data) {
       if (was?.status === "gesloten" && was.closedBy) { w.closedBy = was.closedBy; if (was.closeReason) w.closeReason = was.closeReason; }
     }
     w.createdAt = was?.createdAt || nowIso;
-    const same = was && ["product", "category", "unit", "klasse", "region", "note", "qty", "maxPrice", "until", "status"].every((k) => (was[k] ?? null) === (w[k] ?? null));
+    const same = was && ["product", "category", "unit", "klasse", "region", "note", "qty", "maxPrice", "maxKm", "until", "status"].every((k) => (was[k] ?? null) === (w[k] ?? null));
     w.updatedAt = same ? was.updatedAt : nowIso;
     items[id] = w;
   }
@@ -1144,7 +1163,8 @@ async function matchAfterLots(seller, prev, next, base) {
         const key = `${row.id}:${wid}`;
         if (told.has(key) || told.has(row.id + "|" + lotId) || !wantMatchesLot(w, l, t)) continue;
         told.add(key); told.add(row.id + "|" + lotId);
-        jobs.push(() => Push.notify(row.id, "match", { title: `Aanbod past bij je vraag: ${w.product}`, body: offer, view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}` }, base));
+        const sc = matchScore(w, l, t);
+        jobs.push(() => Push.notify(row.id, "match", { title: `Nieuwe match · ${sc.score}%: ${w.product}`, body: offer + (sc.km !== null ? ` (${Math.round(sc.km)} km)` : ""), view: "market", seller: seller.id, lot: lotId, tag: `m-${lotId}` }, base));
       }
     }
   }
@@ -1160,13 +1180,15 @@ async function matchAfterWants(buyer, prev, next, base) {
   for (const [wid, w] of fresh) {
     for (const row of lots) {
       if (row.id === buyer.id || told.has(row.id + "|" + wid)) continue;
-      const hit = Object.values(row.data.items || {}).find((l) => wantMatchesLot(w, l, t));
+      // Beste partij van deze aanbieder
+      const hit = Object.values(row.data.items || {}).filter((l) => wantMatchesLot(w, l, t))
+        .map((l) => ({ l, sc: matchScore(w, l, t) })).sort((a, b) => b.sc.score - a.sc.score)[0];
       if (!hit) continue;
       told.add(row.id + "|" + wid);
       const until = new Intl.DateTimeFormat("nl-NL", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(w.until + "T12:00:00Z"));
       jobs.push(() => Push.notify(row.id, "match", {
-        title: "Er wordt gevraagd wat jij hebt",
-        body: `Een koper zoekt ${qtyUnit(w.qty, w.unit)} ${w.product}${w.maxPrice ? " (max " + euro(w.maxPrice) + " per " + (UNIT1[w.unit] || w.unit) + ")" : ""}, vóór ${until}. Je partij ${hit.product} (${qtyUnit(hit.remaining ?? hit.qty, hit.unit)}) past daarbij.`,
+        title: `Nieuwe koper · ${hit.sc.score}% match`,
+        body: `Een koper zoekt ${qtyUnit(w.qty, w.unit)} ${w.product}${w.maxPrice ? " (max " + euro(w.maxPrice) + " per " + (UNIT1[w.unit] || w.unit) + ")" : ""}, vóór ${until}${hit.sc.km !== null ? `, ${Math.round(hit.sc.km)} km van je partij` : ""}. Je partij ${hit.l.product} (${qtyUnit(hit.l.remaining ?? hit.l.qty, hit.l.unit)}) past voor ${hit.sc.score}%.`,
         view: "wanted", want: `${buyer.id}:${wid}`, tag: `w-${wid}`,
       }, base));
     }
@@ -1211,6 +1233,26 @@ function bidsView(me, bidderId, data) {
 // ---------- FoodSource API v1 ----------
 const AI = createAi({ q, httpError, log, today });
 const Push = createPush({ q, log });
+const Geo = createGeo({ q, log: (m) => console.log(m) });
+// Partijen en vragen zonder coördinaten (van vóór deze versie, of de plaatsdienst was even plat): één keer per uur aanvullen
+async function geoBackfill(budgetN = 15) {
+  const budget = { n: budgetN }, t = today(), out = { lots: 0, wants: 0 };
+  for (const [col, field, open] of [["lots", "location", lotOpen], ["wants", "region", wantOpen]]) {
+    for (const row of await allDocs(col)) {
+      if (budget.n <= 0) return out;
+      const todo = Object.entries(row.data?.items || {}).filter(([, it]) => it && !it.geo && placeKey(it[field]) && open(it, t));
+      if (!todo.length) continue;
+      const found = {};
+      for (const [id, it] of todo) { const g = await Geo.lookup(it[field], budget); if (g) found[id] = g; }
+      if (!Object.keys(found).length) continue;
+      const cur = await readDoc(col, row.id); if (!cur.data?.items) continue;
+      let n = 0;
+      for (const [id, g] of Object.entries(found)) { const it = cur.data.items[id]; if (it && !it.geo && it[field] === row.data.items[id][field]) { it.geo = g; n++; } }
+      if (n && await writeDocAt(col, row.id, cur, cur.data, "plaatsen")) out[col] += n;
+    }
+  }
+  return out;
+}
 const Cleanup = createCleanup({ q, readDoc, writeDocAt, log, today, getSettings });
 const V1 = createV1({ q, readDoc, writeDocAt, normalizeLots, describeLots, getSettings, requireTrade, log, today, validDate, siteUrl, json, MAX_DOC_BYTES, Push, afterLots: matchAfterLots });
 
@@ -2108,6 +2150,9 @@ export async function runWebhooks(limit = 20) {
     const c = await Cleanup.daily(hour);
     if (c) console.log("opschonen", c);
   } catch (e) { console.error("opschonen", e); }
+  try {
+    if (new Date().getUTCMinutes() < 5 || process.env.GEO_BACKFILL_ALWAYS === "1") { const g = await geoBackfill(); if (g.lots || g.wants) console.log("plaatsen aangevuld", g); }
+  } catch (e) { console.error("plaatsen", e); }
   return V1.deliverDue(limit);
 }
 

@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="app-version" content="bfbc6d7b22">
+<meta name="app-version" content="950ca29df2">
 <title>Restpartijbeurs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css?v=bfbc6d7b22">
+<link rel="stylesheet" href="/app.css?v=950ca29df2">
 <link rel="icon" type="image/png" sizes="32x32" href="/api/brand/icon-32.png" id="lnk-icon">
 <link rel="apple-touch-icon" href="/api/brand/icon-180.png" id="lnk-apple">
 <link rel="manifest" href="/api/manifest.webmanifest">
@@ -263,12 +263,20 @@
     <div class="want-intro">
       <p>Kopers zetten hier wat ze zoeken. Heb jij het? Tik op <b>Ik kan leveren</b> en je partij staat meteen klaar, ingevuld met de gegevens uit de vraag.</p>
     </div>
-    <div class="chips" id="want-chips">
-      <button class="chip" type="button" data-wcat="" aria-pressed="true">Alles</button>
-      <button class="chip" type="button" data-wcat="Groente" aria-pressed="false"><span class="sw Groente"></span>Groente</button>
-      <button class="chip" type="button" data-wcat="Fruit" aria-pressed="false"><span class="sw Fruit"></span>Fruit</button>
-      <button class="chip" type="button" data-wcat="Aardappelen" aria-pressed="false"><span class="sw Aardappelen"></span>Aardappelen</button>
-      <button class="chip" type="button" data-wcat="mine" aria-pressed="false">Mijn vragen</button>
+    <div class="filters">
+      <div class="chips" id="want-chips">
+        <button class="chip" type="button" data-wcat="" aria-pressed="true">Alles</button>
+        <button class="chip" type="button" data-wcat="Groente" aria-pressed="false"><span class="sw Groente"></span>Groente</button>
+        <button class="chip" type="button" data-wcat="Fruit" aria-pressed="false"><span class="sw Fruit"></span>Fruit</button>
+        <button class="chip" type="button" data-wcat="Aardappelen" aria-pressed="false"><span class="sw Aardappelen"></span>Aardappelen</button>
+      </div>
+      <input class="search" id="wq" type="search" placeholder="Zoek op product, koper of plaats">
+      <select class="sel" id="wsort" aria-label="Tonen">
+        <option value="soon">Eerst nodig</option>
+        <option value="new">Nieuwste eerst</option>
+        <option value="match">Past bij mijn partijen</option>
+        <option value="mine">Mijn vragen</option>
+      </select>
     </div>
     <div id="wanted"></div>
   </section>
@@ -282,6 +290,7 @@
   </section>
 
   <section id="view-bids" hidden>
+    <div id="bids-filter" class="chips mine-filter bids-filter" role="group" aria-label="Biedingen tonen"></div>
     <div id="mybids" class="stack"></div>
   </section>
 
@@ -574,7 +583,7 @@
       <div class="field"><label for="f-klasse">Klasse</label>
         <select id="f-klasse"><option>Klasse I</option><option>Klasse II</option><option>Industrie / verwerking</option><option>Biologisch Klasse I</option><option>Biologisch Klasse II</option></select></div>
       <div class="field"><label for="f-herkomst">Herkomst</label><input id="f-herkomst" placeholder="NL" list="dl-landen"></div>
-      <div class="field"><label for="f-loc">Afhaallocatie</label><input id="f-loc" placeholder="bijv. Barendrecht"></div>
+      <div class="field"><label for="f-loc">Afhaallocatie</label><input id="f-loc" placeholder="bijv. Barendrecht of 2992"><span class="hint">Plaats of postcode: kopers zien hoe ver het is.</span></div>
       <div class="field"><label for="f-qty">Hoeveelheid</label>
         <div class="inline"><input id="f-qty" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="next" required placeholder="240">
         <select id="f-unit" aria-label="Eenheid"><option>colli</option><option>kg</option><option>pallets</option><option>kisten</option><option>zakken</option></select></div></div>
@@ -673,7 +682,8 @@
         <select id="w-klasse"><option value="">Maakt niet uit</option><option>Klasse I</option><option>Klasse II</option><option>Industrie / verwerking</option><option>Biologisch Klasse I</option><option>Biologisch Klasse II</option></select></div>
       <div class="field"><label for="w-price">Maximale prijs per eenheid (€)</label><input id="w-price" type="text" inputmode="decimal" autocomplete="off" placeholder="leeg = in overleg"><span class="hint">Laat leeg als de prijs in overleg is.</span></div>
       <div class="field"><label for="w-until">Nodig vóór</label><input id="w-until" type="date" required></div>
-      <div class="field full"><label for="w-region">Regio of afleveradres</label><input id="w-region" placeholder="bijv. regio Breda, of ophalen kan in heel Nederland"></div>
+      <div class="field"><label for="w-region">Plaats of postcode</label><input id="w-region" placeholder="bijv. Breda of 4811" autocomplete="postal-code"><span class="hint">Voor de afstand tot het aanbod (hemelsbreed).</span></div>
+      <div class="field"><label for="w-maxkm">Maximale afstand (km)</label><input id="w-maxkm" type="text" inputmode="numeric" autocomplete="off" placeholder="leeg = maakt niet uit"><span class="hint">Verder weg telt als bijna-match.</span></div>
       <div class="field full"><label for="w-note">Toelichting (optioneel)</label><textarea id="w-note" rows="2" maxlength="500" placeholder="bijv. maat 40+, gewassen, voor verwerking"></textarea></div>
       <div class="field"><label for="w-company">Bedrijfsnaam</label><input id="w-company"></div>
       <div class="field"><label for="w-phone">Telefoon of e-mail</label><input id="w-phone"></div>
@@ -830,19 +840,20 @@
 <datalist id="dl-landen"><option value="NL"><option value="BE"><option value="DE"><option value="ES"><option value="FR"><option value="IT"><option value="PL"><option value="MA"><option value="ZA"></datalist>
 <datalist id="dl-products"><option value="Trostomaten"><option value="Komkommers"><option value="Paprika rood"><option value="IJsbergsla"><option value="Broccoli"><option value="Wortelen"><option value="Uien"><option value="Champignons"><option value="Appels"><option value="Peren"><option value="Aardbeien"><option value="Blauwe bessen"><option value="Consumptieaardappelen"><option value="Frietaardappelen"></datalist>
 
-<script src="/js/core.js?v=bfbc6d7b22"></script>
-<script src="/js/update.js?v=bfbc6d7b22"></script>
-<script src="/js/market.js?v=bfbc6d7b22"></script>
-<script src="/js/ai.js?v=bfbc6d7b22"></script>
-<script src="/js/account.js?v=bfbc6d7b22"></script>
-<script src="/js/push.js?v=bfbc6d7b22"></script>
-<script src="/js/wants.js?v=bfbc6d7b22"></script>
-<script src="/js/notes.js?v=bfbc6d7b22"></script>
-<script src="/js/admin.js?v=bfbc6d7b22"></script>
-<script src="/js/payments.js?v=bfbc6d7b22"></script>
-<script src="/js/stats.js?v=bfbc6d7b22"></script>
-<script src="/js/integrations.js?v=bfbc6d7b22"></script>
-<script src="/js/brand.js?v=bfbc6d7b22"></script>
-<script src="/js/start.js?v=bfbc6d7b22"></script>
+<script src="/js/match-core.js?v=950ca29df2"></script>
+<script src="/js/core.js?v=950ca29df2"></script>
+<script src="/js/update.js?v=950ca29df2"></script>
+<script src="/js/market.js?v=950ca29df2"></script>
+<script src="/js/ai.js?v=950ca29df2"></script>
+<script src="/js/account.js?v=950ca29df2"></script>
+<script src="/js/push.js?v=950ca29df2"></script>
+<script src="/js/wants.js?v=950ca29df2"></script>
+<script src="/js/notes.js?v=950ca29df2"></script>
+<script src="/js/admin.js?v=950ca29df2"></script>
+<script src="/js/payments.js?v=950ca29df2"></script>
+<script src="/js/stats.js?v=950ca29df2"></script>
+<script src="/js/integrations.js?v=950ca29df2"></script>
+<script src="/js/brand.js?v=950ca29df2"></script>
+<script src="/js/start.js?v=950ca29df2"></script>
 </body>
 </html>

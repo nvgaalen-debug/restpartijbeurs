@@ -544,17 +544,18 @@ dialog.detail .ld-body .lot-body, dialog.detail .ld-body .lot-foot { padding-lef
 dialog.detail .ld-body .label-strip { padding-left: 0; padding-right: 0; }
 /* Telefoon: filters compact (categorieën op één regel, zoeken + sorteren naast elkaar) */
 @media (max-width: 600px) {
-  #view-market .filters { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 12px; }
-  #view-market .chips { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; flex-wrap: nowrap; }
-  #view-market .chip { justify-content: center; gap: 4px; padding: 7px 2px; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; }
-  #view-market .chip .sw { flex: none; }
-  #view-market .search { min-width: 0; width: 100%; }
-  #view-market .sel { max-width: 36vw; }
+  #view-market .filters, #view-wanted .filters { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 12px; }
+  #view-market .chips, #view-wanted .chips { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; flex-wrap: nowrap; margin-bottom: 0; }
+  #view-market .chip, #view-wanted .chip { justify-content: center; gap: 4px; padding: 7px 2px; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; }
+  #view-market .chip .sw, #view-wanted .chip .sw { flex: none; }
+  #view-market .search, #view-wanted .search { min-width: 0; width: 100%; }
+  #view-market .sel, #view-wanted .sel { max-width: 36vw; }
+  #view-wanted .want-intro { display: none; } /* zoals het aanbod: meteen de filters; de uitleg staat bij een lege lijst */
   #view-market .show-closed { display: none; }
 }
-@media (max-width: 430px) { #view-market .chip .sw { display: none; } }
+@media (max-width: 430px) { #view-market .chip .sw, #view-wanted .chip .sw { display: none; } }
 /* filters nemen op de telefoon de rest van de chip-breedte in (Aardappelen is de langste) */
-@media (max-width: 600px) { #view-market .chips { grid-template-columns: .8fr 1fr .8fr 1.25fr; } }
+@media (max-width: 600px) { #view-market .chips, #view-wanted .chips { grid-template-columns: .8fr 1fr .8fr 1.25fr; } }
 @media (pointer: coarse) { .search, select.sel { font-size: 16px; } } /* geen inzoomen op iPhone */
 
 /* ---------- achtergrond in de stijl van de handleiding: licht papier met zachte bollen ---------- */
@@ -608,30 +609,43 @@ body:not(.locked) .bg-brand .o1 { top: 140px; }
 .want-intro p { margin: 0; color: var(--muted); max-width: 70ch; }
 #want-chips { margin-bottom: 14px; }
 .want-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
-.want { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; min-width: 0; transition: box-shadow .3s; }
+.want { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; min-width: 0; transition: box-shadow .3s; }
 .want.mine { border-color: var(--accent); }
 .want.closed { opacity: .72; }
 .want.flash { box-shadow: 0 0 0 3px var(--accent); }
-.want-body { padding: 12px 14px 4px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.want .prod { font-size: 24px; }
+.want-body { padding: 12px 12px 8px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
+.want-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.want-head .pill { flex: none; font-size: 11px; }
+.want .tl-title { font-size: 20px; }
+.want .tl-meta { display: flex; align-items: center; gap: 6px; }
+.want .tl-meta .sw { width: 9px; height: 9px; border-radius: 2px; }
+.want .tl-stats { max-width: 340px; }
+.want .tl-line { font-size: 13px; }
 .want-specs { font-size: 15px; font-variant-numeric: tabular-nums; }
 .want-meta { font-size: 13.5px; color: var(--muted); }
 .want-meta:empty { display: none; }
-.want-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px 14px; flex-wrap: wrap; }
-.want-who { font-size: 13.5px; color: var(--muted); }
+.want-foot { margin: 0 12px; padding: 8px 0 12px; flex-wrap: wrap; gap: 8px; }
+.want-foot .actions { margin-left: auto; }
+.want-who { font-size: 12.5px; color: var(--ink); }
 .want-none, .want-yours { font-size: 13.5px; color: var(--muted); background: var(--bg); border-radius: var(--r); padding: 8px 10px; }
 .want-yours b { color: var(--ink); }
 .want-hits { display: grid; gap: 6px; }
 .want-hits-title { font-size: 13px; font-weight: 600; color: var(--ok); }
-.want-hit { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; }
+.want-hit { border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 8px 10px; }
+.want-hit.good { border-left: 3px solid var(--ok); }
+.want-hit.near { border-left: 3px solid var(--warn); }
 .want-hit:hover { border-color: var(--accent); }
+.want-hit-main { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: inherit; }
+.want-hit-txt { flex: 1; min-width: 0; }
+.want-hit-act { margin-top: 6px; }
+.want-hits-title .sub { display: inline; font-weight: 500; color: var(--muted); margin-left: 6px; }
 .want-hit .sub { display: block; font-size: 12.5px; color: var(--muted); }
 .want-hit-price { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .want-tag { display: inline-block; font-size: 11.5px; font-weight: 600; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 1px 8px; margin-top: 4px; }
 .lot-want { margin: 8px 0 0; padding: 8px 10px; border-radius: var(--r); background: var(--accent-soft); color: var(--ink); font-size: 14px; }
 @media (max-width: 600px) {
   .want-grid { grid-template-columns: 1fr; gap: 10px; }
-  .want .prod { font-size: 21px; }
+  .want .prod { font-size: 19px; }
   #want-chips { gap: 6px; }
   #want-chips .chip { padding: 6px 11px; font-size: 13.5px; }
 }
@@ -709,3 +723,28 @@ dialog.supply { width: min(560px, calc(100vw - 24px)); }
 .award-txt { font-size: 13.5px; color: var(--muted); margin-top: 5px; }
 .award-txt .award-done { color: var(--ok); font-weight: 600; }
 .award-txt b { color: var(--ink); }
+@media (max-width: 600px) { .bids-filter.mine-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); } .bids-filter .chip { font-size: 13px; padding: 8px 2px; white-space: nowrap; } }
+
+/* Matchscore: percentage + uitleg */
+.mscore { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+.mscore.good { background: var(--ok-soft); color: var(--ok); }
+.mscore.near { background: var(--warn-soft); color: var(--warn); }
+.mscore.low, .mscore.out { background: var(--off-soft); color: var(--off); }
+.mlines { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 12.5px; color: var(--muted); }
+.mlines li { display: inline-flex; gap: 4px; align-items: baseline; }
+.mlines li > span { font-weight: 700; width: 10px; text-align: center; }
+.mlines li.ok > span { color: var(--ok); }
+.mlines li.warn { color: var(--warn); }
+.mlines li.warn > span { color: var(--warn); }
+.lot-match { display: inline-block; font-size: 11.5px; font-weight: 700; border-radius: 99px; padding: 1px 8px; margin-top: 4px; margin-left: 4px; }
+.lot-match.good { background: var(--ok-soft); color: var(--ok); }
+.lot-match.near { background: var(--warn-soft); color: var(--warn); }
+.tl-match { position: absolute; bottom: 8px; left: 8px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--ok); color: #fff; }
+.tl-match.near { background: var(--warn); }
+.ld-match { margin-top: 12px; border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: var(--r); padding: 10px 12px; background: var(--surface); }
+.ld-match.near { border-left-color: var(--warn); }
+.ld-match-title { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ld-match .btn { margin-top: 8px; }
+.sup-txt .mscore { justify-self: start; }
+.want-foot.mine .actions { margin-left: 0; width: 100%; }
+@media (max-width: 600px) { .want-foot.mine .actions .btn { flex: 1 1 0; } }

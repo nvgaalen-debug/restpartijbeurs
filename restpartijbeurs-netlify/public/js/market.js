@@ -35,7 +35,7 @@ function lotCard(l, { example = false } = {}) {
       <span class="pill ${st.cls}">${mine && !st.closed ? "Jouw partij" : st.label}</span></div>
     <div class="lot-body">
       ${example ? "" : thumbStrip(l)}
-      <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}${!example && ((l.wantRef || "").startsWith(S.me + ":") || Object.keys(l.offeredTo || {}).some((k) => k.startsWith(S.me + ":"))) ? `<div class="want-tag">Reactie op jouw vraag</div>` : ""}</div>
+      <div><h3 class="prod">${esc(l.product)}</h3>${l.ras ? `<div class="ras">${esc(l.ras)}</div>` : ""}${!example && ((l.wantRef || "").startsWith(S.me + ":") || Object.keys(l.offeredTo || {}).some((k) => k.startsWith(S.me + ":"))) ? `<div class="want-tag">Reactie op jouw vraag</div>` : ""}${!example && typeof myBestMatch === "function" ? ((b) => (b ? `<div class="lot-match ${b.sc.level}">${b.sc.score}% match met je vraag</div>` : ""))(myBestMatch(l)) : ""}</div>
       ${specRows(l)}
       ${l.note ? `<div class="note">${esc(l.note)}</div>` : ""}
     </div>
@@ -64,6 +64,8 @@ const ICO = {
   pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',
   box: '<path d="M12 2.8l8.5 4.6v9.2L12 21.2l-8.5-4.6V7.4z"/><path d="M3.5 7.4L12 12l8.5-4.6M12 12v9.2"/>',
   shop: '<path d="M3.5 9.5L5 4h14l1.5 5.5"/><path d="M3.5 9.5h17v10.5h-17z"/><path d="M9.5 20v-5.5h5V20"/>',
+  cal: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  note: '<path d="M5 4h14v12l-4 4H5z"/><path d="M15 20v-4h4M8.5 9h7M8.5 12.5h5"/>',
 };
 const svgI = (d, cls = "tl-ico") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 function lotTile(l) {
@@ -75,7 +77,7 @@ function lotTile(l) {
   return `<article class="tl${st.closed ? " closed" : ""}" data-act="lot-detail" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}" tabindex="0" role="button" aria-label="${esc(l.product)}: details bekijken">
     <div class="tl-photo">${ph ? `<img src="${photoUrl(ph)}" alt="" loading="lazy">` : `<div class="tl-noimg ${esc(l.category)}">${svgI(CAT_ICON[l.category] || CAT_ICON.Groente, "tl-catico")}</div>`}
       <span class="tl-badge ${mine && !st.closed ? "mine" : st.cls}">${mine && !st.closed ? "Jouw partij" : st.closed || st.cls === "warn" ? esc(st.label) : "Beschikbaar"}</span>
-      ${myOffer && !st.closed ? `<span class="tl-mybid">Jouw bod</span>` : ""}</div>
+      ${myOffer && !st.closed ? `<span class="tl-mybid">Jouw bod</span>` : ""}${!st.closed && typeof myBestMatch === "function" ? ((b) => (b ? `<span class="tl-match ${b.sc.level}">${b.sc.score}% match</span>` : ""))(myBestMatch(l)) : ""}</div>
     <div class="tl-body">
       <h3 class="tl-title">${esc(l.product)}</h3>
       <div class="tl-meta">${esc(l.category)} · ${esc(l.klasse)}${l.origin ? " · " + esc(l.origin) : ""}</div>
@@ -97,7 +99,9 @@ function renderLotDetail() {
   const l = allLots().find((x) => x.id === S.detail.lotId && x.sellerId === S.detail.seller);
   if (!l) { if (dlgDetail.open) dlgDetail.close(); return; }
   $("#ld-title").textContent = l.product;
-  $("#ld-body").innerHTML = lotCard(l);
+  const best = typeof myBestMatch === "function" && !lotState(l).closed ? myBestMatch(l) : null;
+  $("#ld-body").innerHTML = lotCard(l) + (best ? `<div class="ld-match ${best.sc.level}"><div class="ld-match-title">${matchBadge(best.sc)} ${best.sc.level === "good" ? "Past bij" : "Past bijna bij"} je vraag: ${esc(best.w.product)}, ${num.format(best.w.qty)} ${esc(best.w.unit)}</div>${matchLines(best.sc)}
+    ${best.sc.bidAt && S.canWrite !== false ? `<button class="btn small" type="button" data-act="want-bid" data-lot="${esc(l.id)}" data-price="${best.sc.bidAt}">Bied ${euro.format(best.sc.bidAt)}</button>` : ""}</div>` : "");
 }
 dlgDetail.addEventListener("close", () => { S.detail = null; });
 document.addEventListener("keydown", (e) => {
@@ -225,20 +229,29 @@ function renderBids() {
   const items = offers.map(([lotId, o]) => {
     const l = lotsById.get(lotId);
     let status;
-    if (!l) status = { label: "Partij verwijderd", cls: "off", open: false };
-    else if (l.accepted && l.accepted[S.me]) status = { label: `Gegund: ${num.format(l.accepted[S.me].qty)} ${esc(l.unit)}`, cls: "ok", open: false };
-    else if (l.rejected && l.rejected[S.me]) status = { label: "Afgewezen", cls: "off", open: false };
-    else { const st = lotState(l); status = st.closed ? { label: "Niet gegund", cls: "off", open: false } : { label: "In behandeling", cls: "acc", open: true }; }
+    if (!l) status = { label: "Partij verwijderd", cls: "off", open: false, key: "lost" };
+    else if (l.accepted && l.accepted[S.me]) status = { label: `Gegund: ${num.format(l.accepted[S.me].qty)} ${esc(l.unit)}`, cls: "ok", open: false, key: "won" };
+    else if (l.rejected && l.rejected[S.me]) status = { label: "Afgewezen", cls: "off", open: false, key: "rejected" };
+    else { const st = lotState(l); status = st.closed ? { label: "Niet gegund", cls: "off", open: false, key: "lost" } : { label: "In behandeling", cls: "acc", open: true, key: "open" }; }
     return { lotId, o, l, status };
   }).sort((a, b) => (b.o.at || "").localeCompare(a.o.at || ""));
   $("#n-bids").textContent = items.filter((i) => i.status.open).length;
   if (!items.length) {
+    $("#bids-filter").innerHTML = "";
     box.innerHTML = `<div class="empty" style="grid-template-columns:1fr"><div><h2>Nog geen biedingen</h2><p>Bied op een partij in het aanbod. Je ziet hier of de verkoper je bod accepteert.</p>
       <button class="btn" type="button" data-act="goto-market">Naar het aanbod</button></div></div>`;
     return;
   }
+  // Filter op status; "Niet gegund" (partij verkocht aan een ander, verlopen of verwijderd) alleen als die er zijn
+  const F = { all: "Alle", open: "In behandeling", won: "Gegund", rejected: "Afgewezen", lost: "Niet gegund" };
+  const count = (k) => (k === "all" ? items.length : items.filter((i) => i.status.key === k).length);
+  if (!F[S.bidsFilter]) { let v = ""; try { v = localStorage.getItem("rpb-bids-filter") || ""; } catch {} S.bidsFilter = F[v] ? v : "all"; }
+  $("#bids-filter").innerHTML = Object.entries(F).filter(([k]) => k !== "lost" || count(k) || S.bidsFilter === k)
+    .map(([k, label]) => `<button class="chip" type="button" data-act="bids-filter" data-f="${k}" aria-pressed="${S.bidsFilter === k}">${label} <span class="n">${count(k)}</span></button>`).join("");
+  const shown = S.bidsFilter === "all" ? items : items.filter((i) => i.status.key === S.bidsFilter);
+  if (!shown.length) { box.innerHTML = `<div class="notice">Geen biedingen met de status “${F[S.bidsFilter]}”.</div>`; return; }
   box.innerHTML = `<div class="panel"><div class="tablewrap"><table class="bids bid-cards"><thead><tr><th>Partij</th><th class="num">Jouw bod</th><th class="num">Hoeveelheid</th><th class="num">Totaal</th><th>Status</th><th></th></tr></thead><tbody>
-    ${items.map(({ lotId, o, l, status }) => {
+    ${shown.map(({ lotId, o, l, status }) => {
       const sm = l ? bidSummary(lotId) : null;
       const top = sm && sm.n ? { price: sm.top } : null;
       const winning = top && o.price >= top.price;
@@ -546,7 +559,7 @@ $("#form-lot").addEventListener("submit", async (e) => {
 
 // ---------- bid dialog ----------
 const dlgBid = $("#dlg-bid");
-function openBidDialog(lotId) {
+function openBidDialog(lotId, pre = {}) {
   const l = allLots().find((x) => x.id === lotId);
   if (!l) return;
   S.bidLot = l;
@@ -554,7 +567,7 @@ function openBidDialog(lotId) {
   const rem = l.remaining ?? l.qty;
   const sm = bidSummary(lotId), top = sm.n ? { price: sm.top } : null;
   $("#bid-sub").textContent = `${l.product}${l.ras ? " · " + l.ras : ""} — ${num.format(rem)} ${l.unit} van ${l.company}. Vraagprijs ${euro.format(l.price)}${top ? `, hoogste bod ${euro.format(top.price)}` : ""}.`;
-  $("#b-price").value = eurOut(mine ? mine.price : l.price);
+  $("#b-price").value = eurOut(pre.price > 0 ? pre.price : mine ? mine.price : l.price);
   $("#b-qty").value = mine ? Math.min(mine.qty, rem) : rem;
   $("#b-qty").min = Math.min(l.minQty || 1, rem); $("#b-qty").max = rem;
   $("#b-qty-hint").textContent = `${l.minQty > 1 ? "Min. " + num.format(Math.min(l.minQty, rem)) + ", " : ""}max. ${num.format(rem)} ${l.unit}`;
@@ -603,6 +616,7 @@ document.addEventListener("click", async (e) => {
   if (act === "photo") return openLightbox(t.dataset.seller, lotId, t.dataset.i);
   if (act === "contact") return openContact(t.dataset.seller, lotId);
   if (act === "contact-seller") return openContactSeller(lotId);
+  if (act === "bids-filter") { S.bidsFilter = t.dataset.f; try { localStorage.setItem("rpb-bids-filter", S.bidsFilter); } catch {} return renderBids(); }
   if (act === "mine-filter") { S.mineFilter = t.dataset.f; try { localStorage.setItem("rpb-mine-filter", S.mineFilter); } catch {} return renderMine(); }
   if (act === "contact-bidder") return openContactBidder(lotId, bidder);
   if (act === "new") return openLotDialog();

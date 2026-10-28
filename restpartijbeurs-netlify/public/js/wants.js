@@ -1,29 +1,14 @@
 // FoodSource – Gevraagd: kopers zetten wat ze zoeken, aanbieders reageren met "Ik kan leveren".
 // Passen vraag en aanbod bij elkaar, dan zien beide dat hier (en krijgen ze een pushmelding van de server).
-// Dezelfde regels als netlify/lib/match.mjs – bij een wijziging beide aanpassen.
-const MATCH_STOP = new Set(["en", "of", "de", "het", "een", "met", "voor", "van", "klasse", "kg", "kilo"]);
-function matchStem(w) {
-  let s = w.replace(/'?s$/, "").replace(/en$/, "");
-  if (s.length < 2) s = w;
-  return s.replace(/([aeiou])\1/g, "$1").replace(/([^aeiou])\1/g, "$1").replace(/v$/, "f");
-}
-const matchWords = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")
-  .filter((w) => w.length >= 2 && !MATCH_STOP.has(w)).map(matchStem);
-function productMatches(wantProduct, lotProduct, lotRas, strict = false) {
-  const want = matchWords(wantProduct), lot = matchWords(`${lotProduct || ""} ${lotRas || ""}`);
-  if (!want.length || !lot.length) return false;
-  return want.every((w) => lot.some((l) => l === w || (!strict && ((w.length >= 4 && l.includes(w)) || (w.length >= 3 && l.endsWith(w))))));
-}
-function wantIsOpen(w) { return w && w.status !== "gesloten" && !!w.until && w.until >= localDate(); }
-function priceFits(w, l) {
-  if (!(w.maxPrice > 0)) return true;
-  if (w.unit === l.unit) return l.price <= w.maxPrice + 1e-9;
-  if (w.unit === "kg" && l.kgPerUnit > 0) return l.price / l.kgPerUnit <= w.maxPrice + 1e-9;
-  return true;
-}
-function wantMatchesLot(w, l) {
-  // Andere categorie (bijv. per ongeluk "Groente" bij aardbeien): alleen bij precies hetzelfde product
-  return wantIsOpen(w) && !lotState(l).closed && (!w.klasse || w.klasse === l.klasse) && priceFits(w, l) && productMatches(w.product, l.product, l.ras, w.category !== l.category);
+// De matchscore (0–100% met uitleg) komt uit match-core.js: een kopie van netlify/lib/match.mjs, dus precies wat de server rekent.
+const matchStem = MatchCore.stem, matchWords = MatchCore.words, productMatches = MatchCore.productMatch;
+function wantIsOpen(w) { return MatchCore.wantOpen(w, localDate()); }
+const scoreOf = (w, l) => MatchCore.matchScore(w, l, localDate());
+function wantMatchesLot(w, l) { return wantIsOpen(w) && !lotState(l).closed && scoreOf(w, l).score >= MatchCore.GOOD; }
+// Badge + uitleg (✓ / ⚠️ / ·)
+function matchBadge(sc) { return `<span class="mscore ${sc.level}" title="${sc.level === "good" ? "Goede match" : "Bijna-match"}">${sc.score}%</span>`; }
+function matchLines(sc) {
+  return `<ul class="mlines">${sc.lines.map((x) => `<li class="${x.s}"><span aria-hidden="true">${x.s === "ok" ? "✓" : x.s === "warn" ? "!" : "·"}</span>${esc(x.t)}</li>`).join("")}</ul>`;
 }
 
 // ---------- gegevens ----------
@@ -43,15 +28,43 @@ function wantState(w) {
   const d = new Date(w.until + "T12:00").toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
   return { label: `Nodig vóór ${d}`, cls: dl <= 2 ? "warn" : "ok", closed: false };
 }
-// Partijen die bij een vraag passen, plus partijen die als reactie op deze vraag zijn aangeboden
+// Partijen die (bijna) bij een vraag passen, plus partijen die als reactie op deze vraag zijn aangeboden.
+// Beste match eerst; elke partij krijgt .match = { score, level, lines, km, bidAt }
 function lotsForWant(w) {
-  return allLots().filter((l) => l.sellerId !== w.buyerId && !lotState(l).closed && (isReaction(l, w) || wantMatchesLot(w, l)));
+  return allLots().filter((l) => l.sellerId !== w.buyerId && !lotState(l).closed)
+    .map((l) => ({ ...l, match: scoreOf(w, l) }))
+    .filter((l) => isReaction(l, w) || l.match.score >= MatchCore.NEAR)
+    .sort((a, b) => (b.match.score - a.match.score) || (a.price - b.price));
+}
+// Beste match tussen een partij en mijn eigen open vragen (voor het label in het aanbod)
+function myBestMatch(l) {
+  if (!S.me || l.sellerId === S.me) return null;
+  let best = null;
+  for (const [id, w] of Object.entries(myWantsDoc()?.items || {})) {
+    if (!wantIsOpen(w)) continue;
+    const sc = scoreOf(w, l);
+    if (sc.score >= MatchCore.NEAR && (!best || sc.score > best.sc.score)) best = { sc, w: { ...w, id } };
+  }
+  return best;
 }
 
 // Door de aanbieder op deze vraag aangeboden (nieuwe partij via 'Ik kan leveren', of een bestaande partij)
 const isReaction = (l, w) => l.wantRef === w.key || !!l.offeredTo?.[w.key];
 // ---------- tonen ----------
 S.wcat = "";
+// Eén gevonden partij bij je vraag: percentage, gegevens, waarom (✓ / !), en bij een net te dure partij "Bied € …"
+function wantHit(w, l) {
+  const m = l.match;
+  return `<div class="want-hit ${m.level}">
+    <button class="want-hit-main" type="button" data-act="want-lot" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">
+      ${m.out ? `<span class="mscore out">${esc(m.out)}</span>` : matchBadge(m)}
+      <span class="want-hit-txt"><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${isReaction(l, w) ? ' <span class="want-tag">Reactie</span>' : ""}<span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${esc(l.company)}${l.location ? " · " + esc(l.location) : ""}</span></span>
+      <span class="want-hit-price">${euro.format(l.price)}<span class="sub">per ${esc(unitSingular(l.unit))}</span></span>
+    </button>
+    ${matchLines(m)}
+    ${m.bidAt && S.canWrite !== false ? `<div class="want-hit-act"><button class="btn small" type="button" data-act="want-bid" data-lot="${esc(l.id)}" data-price="${m.bidAt}">Bied ${euro.format(m.bidAt)}</button></div>` : ""}
+  </div>`;
+}
 function wantCard(w) {
   const st = wantState(w), mine = w.buyerId === S.me;
   const price = w.maxPrice > 0 ? `max ${euro.format(w.maxPrice)} per ${esc(unitSingular(w.unit))}` : "prijs in overleg";
@@ -59,31 +72,33 @@ function wantCard(w) {
   const myLots = !mine ? lots.filter((l) => l.sellerId === S.me) : [];
   let extra = "", actions = "";
   if (mine) {
+    const good = lots.filter((l) => l.match.level === "good").length;
     extra = lots.length
-      ? `<div class="want-hits"><div class="want-hits-title">${lots.length === 1 ? "1 partij past" : lots.length + " partijen passen"}</div>${lots.slice(0, 6).map((l) => `<button class="want-hit" type="button" data-act="want-lot" data-seller="${esc(l.sellerId)}" data-lot="${esc(l.id)}">
-          <span><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${isReaction(l, w) ? ' <span class="want-tag">Reactie</span>' : ""}<span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${esc(l.company)}${l.location ? " · " + esc(l.location) : ""}</span></span>
-          <span class="want-hit-price">${euro.format(l.price)}<span class="sub">per ${esc(unitSingular(l.unit))}</span></span></button>`).join("")}</div>`
-      : st.closed ? "" : `<div class="want-none">Nog geen passend aanbod. Je krijgt een melding zodra er iets past.</div>`;
+      ? `<div class="want-hits"><div class="want-hits-title">${lots.length === 1 ? "1 partij gevonden" : lots.length + " partijen gevonden"} · beste match ${lots[0].match.score}%${good < lots.length ? `<span class="sub">${good ? good + " goed, " : ""}${lots.length - good} bijna</span>` : ""}</div>${lots.slice(0, 6).map((l) => wantHit(w, l)).join("")}${lots.length > 6 ? `<div class="sub">En nog ${lots.length - 6} in het aanbod.</div>` : ""}</div>`
+      : st.closed ? "" : `<div class="want-none">Nog geen passend aanbod. Je krijgt een melding zodra er een goede match is (90% of meer).</div>`;
     actions = w.closedBy === "beheer" ? ""
       : st.closed
       ? `<button class="btn small" type="button" data-act="want-edit" data-want="${esc(w.id)}">Heropenen</button>`
       : `<button class="btn small" type="button" data-act="want-edit" data-want="${esc(w.id)}">Bewerken</button><button class="btn small" type="button" data-act="want-found" data-want="${esc(w.id)}">Gevonden</button><button class="btn small ghost" type="button" data-act="want-close" data-want="${esc(w.id)}">Intrekken</button>`;
   } else {
     const offered = myLots.find((l) => isReaction(l, w));
-    if (offered) extra = `<div class="want-yours">Je hebt <b>${esc(offered.product)}</b> aangeboden; de koper ziet hem bij de vraag.</div>`;
-    else if (myLots.length) extra = `<div class="want-yours">Je partij <b>${esc(myLots[0].product)}</b> past al bij deze vraag; de koper ziet hem.</div>`;
+    if (offered) extra = `<div class="want-yours">${offered.match.out ? "" : matchBadge(offered.match) + " "}Je hebt <b>${esc(offered.product)}</b> aangeboden; de koper ziet hem bij de vraag.</div>`;
+    else if (myLots.length) extra = `<div class="want-yours">${matchBadge(myLots[0].match)} Je partij <b>${esc(myLots[0].product)}</b> ${myLots[0].match.level === "good" ? "past bij deze vraag" : "past bijna bij deze vraag"}; de koper ziet hem.</div>`;
     actions = S.canWrite !== false && S.me ? `<button class="btn primary small" type="button" data-act="want-supply" data-want="${esc(w.key)}">Ik kan leveren</button>` : "";
   }
+  // Zelfde opbouw als een partij in het aanbod: titel, categorie · klasse, twee blokjes, regels met icoontjes, onderaan wie
+  const pill = mine && !st.closed ? `<span class="pill acc">Jouw vraag</span>` : `<span class="pill ${st.cls}">${esc(st.label)}</span>`;
   return `<article class="want${mine ? " mine" : ""}${st.closed ? " closed" : ""}" id="want-${esc(w.buyerId)}-${esc(w.id)}">
-    <div class="label-strip"><span class="cat"><span class="sw ${esc(w.category)}"></span>${esc(w.category)} · ${w.klasse ? esc(w.klasse) : "elke klasse"}</span><span class="pill ${st.cls}">${mine && !st.closed ? "Jouw vraag" : esc(st.label)}</span></div>
     <div class="want-body">
-      <h3 class="prod">${esc(w.product)}</h3>
-      <div class="want-specs"><b>${num.format(w.qty)} ${esc(w.unit)}</b> · ${price}</div>
-      <div class="want-meta">${mine && !st.closed ? esc(st.label) + (w.region ? " · " : "") : ""}${w.region ? esc(w.region) : ""}</div>
-      ${w.note ? `<div class="note">${esc(w.note)}</div>` : ""}
+      <div class="want-head"><h3 class="tl-title prod">${esc(w.product)}</h3>${pill}</div>
+      <div class="tl-meta"><span class="sw ${esc(w.category)}"></span>${esc(w.category)} · ${w.klasse ? esc(w.klasse) : "elke klasse"}</div>
+      <div class="tl-stats"><div><b>${num.format(w.qty)} ${esc(w.unit)}</b><span>Gevraagd</span></div><div><b>${w.maxPrice > 0 ? euro.format(w.maxPrice) : "In overleg"}</b><span>${w.maxPrice > 0 ? `Max. per ${esc(unitSingular(w.unit))}` : "Prijs"}</span></div></div>
+      ${mine && !st.closed ? `<div class="tl-line">${svgI(ICO.cal)}<span>${esc(st.label)}</span></div>` : ""}
+      ${w.region || w.maxKm ? `<div class="tl-line">${svgI(ICO.pin)}<span>${w.region ? esc(w.region) : ""}${w.maxKm ? `<span class="sub">${w.region ? " · " : ""}max ${num.format(w.maxKm)} km</span>` : ""}</span></div>` : ""}
+      ${w.note ? `<div class="tl-line">${svgI(ICO.note)}<span>${esc(w.note)}</span></div>` : ""}
       ${extra}
     </div>
-    <div class="want-foot"><span class="want-who">${mine ? "" : esc(w.company || "Koper")}</span><div class="actions">${actions}</div></div>
+    ${mine ? (actions ? `<div class="tl-seller want-foot mine"><div class="actions">${actions}</div></div>` : "") : `<div class="tl-seller want-foot">${svgI(ICO.shop)}<span class="want-who">${esc(w.company || "Koper")}</span><div class="actions">${actions}</div></div>`}
   </article>`;
 }
 function renderWants() {
@@ -91,11 +106,26 @@ function renderWants() {
   const all = allWants();
   $("#n-wanted").textContent = all.filter((w) => w.buyerId !== S.me && wantIsOpen(w)).length;
   if (!S.ready) { box.innerHTML = `<div class="notice">Vragen laden…</div>`; return; }
-  let list = S.wcat === "mine" ? all.filter((w) => w.buyerId === S.me) : all.filter((w) => wantIsOpen(w) && (!S.wcat || w.category === S.wcat));
-  // Eigen open vragen bovenaan, daarna wat het eerst nodig is
-  list.sort((a, b) => (wantIsOpen(b) - wantIsOpen(a)) || ((b.buyerId === S.me) - (a.buyerId === S.me)) || (a.until || "").localeCompare(b.until || ""));
+  const mineOnly = S.wsort === "mine";
+  let list = mineOnly ? all.filter((w) => w.buyerId === S.me) : all.filter((w) => wantIsOpen(w));
+  if (S.wcat) list = list.filter((w) => w.category === S.wcat);
+  const qq = (S.wq || "").trim().toLowerCase();
+  if (qq) list = list.filter((w) => [w.product, w.category, w.klasse, w.region, w.company, w.note].join(" ").toLowerCase().includes(qq));
+  // Past bij mijn partijen: beste match met een van mijn open partijen (alleen vragen van anderen)
+  const mine0 = S.wsort === "match" ? myOpenLots() : [];
+  const best = (w) => (w.buyerId === S.me ? 0 : Math.max(0, ...mine0.map((l) => scoreOf(w, l).score)));
+  if (S.wsort === "match") list = list.filter((w) => best(w) >= MatchCore.NEAR);
+  const bySoon = (a, b) => (a.until || "").localeCompare(b.until || "");
+  const sorters = {
+    soon: (a, b) => (wantIsOpen(b) - wantIsOpen(a)) || ((b.buyerId === S.me) - (a.buyerId === S.me)) || bySoon(a, b),
+    new: (a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""),
+    match: (a, b) => (best(b) - best(a)) || bySoon(a, b),
+    mine: (a, b) => (wantIsOpen(b) - wantIsOpen(a)) || bySoon(a, b),
+  };
+  list.sort(sorters[S.wsort] || sorters.soon);
   if (!list.length) {
-    box.innerHTML = `<div class="empty" style="grid-template-columns:1fr"><div><h2>${S.wcat === "mine" ? "Je hebt nog niets gevraagd" : "Nog geen vragen"}</h2>
+    if (qq || S.wcat || S.wsort === "match") { box.innerHTML = `<div class="notice">${S.wsort === "match" && !qq ? "Er zijn nu geen vragen die bij je partijen passen." : "Geen vragen gevonden met deze filters."}</div>`; return; }
+    box.innerHTML = `<div class="empty" style="grid-template-columns:1fr"><div><h2>${mineOnly ? "Je hebt nog niets gevraagd" : "Nog geen vragen"}</h2>
       <p>Zoek je iets dat niet in het aanbod staat? Plaats een vraag. Aanbieders met een passende partij krijgen direct een melding.</p>
       ${S.canWrite !== false && S.me ? `<button class="btn primary" type="button" data-act="want-new">+ Vraag plaatsen</button>` : ""}</div></div>`;
     return;
@@ -104,7 +134,8 @@ function renderWants() {
 }
 function showWant(key) {
   const [buyer, id] = String(key || "").split(":");
-  S.wcat = ""; $$("#want-chips .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.wcat === "")));
+  S.wcat = ""; S.wq = ""; $("#wq").value = ""; $$("#want-chips .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.wcat === "")));
+  if (S.wsort === "match" || (S.wsort === "mine" && buyer !== S.me)) { S.wsort = "soon"; $("#wsort").value = "soon"; }
   setView("wanted"); renderWants();
   const el = document.getElementById(`want-${buyer}-${id}`);
   if (!el) return;
@@ -125,7 +156,7 @@ function openWantDialog(id) {
   v("#w-product", w?.product); v("#w-cat", w?.category || "Groente"); v("#w-qty", w ? decOut(w.qty) : ""); v("#w-unit", w?.unit || pref.get("wunit") || "pallets");
   v("#w-klasse", w?.klasse || ""); v("#w-price", w?.maxPrice ? eurOut(w.maxPrice) : "");
   v("#w-until", w && !reopen ? w.until : localDate(new Date(Date.now() + 7 * 86400000)));
-  v("#w-region", w?.region); v("#w-note", w?.note);
+  v("#w-region", w?.region); v("#w-maxkm", w?.maxKm ? String(w.maxKm) : ""); v("#w-note", w?.note);
   v("#w-company", myWantsDoc()?.company || S.user?.company || pref.get("company")); v("#w-phone", myWantsDoc()?.contact || S.user?.contact || pref.get("contact"));
   $("#want-err").textContent = "";
   dlgWant.showModal();
@@ -137,7 +168,8 @@ $("#form-want").addEventListener("submit", async (e) => {
   const unit = val("#w-unit");
   const qty = unit === "kg" ? decIn(val("#w-qty")) : intIn(val("#w-qty"));
   const rawPrice = val("#w-price"), maxPrice = rawPrice ? decIn(rawPrice) : null;
-  const err = !val("#w-product") ? "Vul in wat je zoekt." : !(qty > 0) ? "Vul een hoeveelheid in (een heel getal, behalve bij kg)." : rawPrice && !(maxPrice > 0) ? "Vul een geldige maximale prijs in, of laat het veld leeg." : !val("#w-until") ? "Kies vóór wanneer je het nodig hebt." : val("#w-until") < localDate() ? "Die datum ligt in het verleden." : !val("#w-company") ? "Vul je bedrijfsnaam in." : "";
+  const rawKm = val("#w-maxkm"), maxKm = rawKm ? intIn(rawKm) : null;
+  const err = !val("#w-product") ? "Vul in wat je zoekt." : !(qty > 0) ? "Vul een hoeveelheid in (een heel getal, behalve bij kg)." : rawPrice && !(maxPrice > 0) ? "Vul een geldige maximale prijs in, of laat het veld leeg." : rawKm && !(maxKm >= 1 && maxKm <= 1000) ? "Vul een maximale afstand in hele kilometers in (1 tot 1000), of laat het veld leeg." : rawKm && !val("#w-region") ? "Vul ook je plaats of postcode in; vanaf daar rekenen we de afstand." : !val("#w-until") ? "Kies vóór wanneer je het nodig hebt." : val("#w-until") < localDate() ? "Die datum ligt in het verleden." : !val("#w-company") ? "Vul je bedrijfsnaam in." : "";
   if (err) { $("#want-err").textContent = err; return; }
   const id = S.editingWant || newId().replace(/^l/, "w");
   const company = val("#w-company"), contact = val("#w-phone");
@@ -146,14 +178,14 @@ $("#form-want").addEventListener("submit", async (e) => {
   const ok = await saveMyWants((doc) => {
     doc.company = company; doc.contact = contact;
     const prev = doc.items[id] || {};
-    doc.items[id] = { ...prev, product: val("#w-product"), category: val("#w-cat"), qty, unit, klasse: val("#w-klasse"), maxPrice, until: val("#w-until"), region: val("#w-region"), note: val("#w-note"), status: "open" };
+    doc.items[id] = { ...prev, product: val("#w-product"), category: val("#w-cat"), qty, unit, klasse: val("#w-klasse"), maxPrice, until: val("#w-until"), region: val("#w-region"), maxKm, note: val("#w-note"), status: "open" };
     delete doc.items[id].closedReason; delete doc.items[id].closedAt;
   });
   if (!ok) return;
   dlgWant.close();
   const w = { ...myWantsDoc().items[id], id, buyerId: S.me, key: `${S.me}:${id}` };
-  const n = lotsForWant(w).length;
-  toast(isNew ? (n ? `Vraag geplaatst. ${n === 1 ? "Er past al 1 partij" : `Er passen al ${n} partijen`}; je ziet ze bij je vraag.` : "Vraag geplaatst. Aanbieders met een passende partij krijgen een melding.") : "Vraag opgeslagen.");
+  const hits = lotsForWant(w), n = hits.length;
+  toast(isNew ? (n ? `Vraag geplaatst. ${n === 1 ? "1 partij gevonden" : n + " partijen gevonden"}, beste match ${hits[0].match.score}%; je ziet ze bij je vraag.` : "Vraag geplaatst. Aanbieders met een passende partij krijgen een melding.") : "Vraag opgeslagen.");
   if (S.view !== "wanted") setView("wanted");
 });
 
@@ -165,6 +197,7 @@ document.addEventListener("click", async (e) => {
   if (act === "want-new") return openWantDialog();
   if (act === "want-edit") return openWantDialog(t.dataset.want);
   if (act === "want-lot") return openLotDetail(t.dataset.seller, t.dataset.lot);
+  if (act === "want-bid") return openBidDialog(t.dataset.lot, { price: Number(t.dataset.price) });
   if (act === "want-found" || act === "want-close") {
     const id = t.dataset.want;
     const ok = await saveMyWants((doc) => { const w = doc.items[id]; if (w) { w.status = "gesloten"; w.closedReason = act === "want-found" ? "gevonden" : "niet meer nodig"; } });
@@ -203,13 +236,13 @@ const dlgSupply = $("#dlg-supply");
 function openSupply(w) {
   S.supplyWant = w;
   $("#sup-sub").textContent = `${w.company || "Een koper"} zoekt ${num.format(w.qty)} ${w.unit} ${w.product}${w.klasse ? " (" + w.klasse + ")" : ""}${w.maxPrice > 0 ? `, max ${euro.format(w.maxPrice)} per ${unitSingular(w.unit)}` : ", prijs in overleg"}${w.region ? ` · ${w.region}` : ""}.`;
-  const lots = sameProductLots(w).map((l) => ({ l, fit: wantMatchesLot(w, l), done: !!(l.offeredTo?.[w.key] || l.wantRef === w.key),
-      why: [w.klasse && w.klasse !== l.klasse ? "Andere klasse" : "", !priceFits(w, l) ? "Boven de maximale prijs" : ""].filter(Boolean).join(" · ") }))
-    .sort((a, b) => (b.fit - a.fit) || (b.l.createdAt || "").localeCompare(a.l.createdAt || ""));
-  $("#sup-list").innerHTML = lots.map(({ l, fit, done, why }) => `<div class="sup-item${fit ? " fit" : ""}">
+  const lots = sameProductLots(w).map((l) => { const m = scoreOf(w, l); return { l, m, fit: m.level === "good", done: !!(l.offeredTo?.[w.key] || l.wantRef === w.key) }; })
+    .sort((a, b) => (b.m.score - a.m.score) || (b.l.createdAt || "").localeCompare(a.l.createdAt || ""));
+  $("#sup-list").innerHTML = lots.map(({ l, m, fit, done }) => `<div class="sup-item${fit ? " fit" : ""}">
       ${validPhotos(l)[0] ? `<img src="${photoUrl(validPhotos(l)[0])}" alt="" loading="lazy">` : `<span class="sup-noimg sw ${esc(l.category)}"></span>`}
-      <div class="sup-txt"><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b>${fit ? '<span class="want-tag">Past bij de vraag</span>' : why ? `<span class="sup-why">${esc(why)}</span>` : ""}
-        <span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${euro.format(l.price)} per ${esc(unitSingular(l.unit))}${l.location ? " · " + esc(l.location) : ""}</span></div>
+      <div class="sup-txt"><b>${esc(l.product)}${l.ras ? " " + esc(l.ras) : ""}</b> ${m.out ? `<span class="sup-why">${esc(m.out)}</span>` : matchBadge(m)}
+        <span class="sub">${num.format(l.remaining ?? l.qty)} ${esc(l.unit)} · ${euro.format(l.price)} per ${esc(unitSingular(l.unit))}${l.location ? " · " + esc(l.location) : ""}</span>
+        ${matchLines(m)}</div>
       ${done ? `<span class="pill ok">Aangeboden</span>` : `<button class="btn small${fit ? " primary" : ""}" type="button" data-act="supply-lot" data-lot="${esc(l.id)}">Aanbieden</button>`}
     </div>`).join("");
   dlgSupply.showModal();
@@ -224,6 +257,9 @@ function newLotForWant(w) {
     });
   }
 }
+S.wsort = "soon"; S.wq = "";
+$("#wq").addEventListener("input", () => { S.wq = $("#wq").value; renderWants(); });
+$("#wsort").addEventListener("change", () => { S.wsort = $("#wsort").value; renderWants(); });
 $("#want-chips").addEventListener("click", (e) => {
   const c = e.target.closest("[data-wcat]"); if (!c) return;
   S.wcat = c.dataset.wcat;
